@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.models import PushTarget
 from app.modules.alerting.enums import PushProvider
-from app.modules.alerting.services.dispatcher import PushDispatcher, alert_payload
+from app.modules.alerting.services.dispatcher import alert_payload
 from app.modules.alerting.services.providers import Delivery, FcmProvider, NtfyProvider, Provider
 from app.modules.alerting.services.targets import DISABLE_AFTER_FAILURES, deliver
 
@@ -200,28 +200,6 @@ async def test_deliver_notes_a_provider_that_is_not_set_up():
     assert item.last_error == "The provider is not set up"
 
 
-def message(**data):
-    return {"type": "event", "data": {"uuid": str(uuid4()), "alert": True, **data}}
-
-
-def test_first_alert_returns_an_alert_once():
-    dispatcher = PushDispatcher(None)
-    alert = message()
-    assert dispatcher.first_alert(alert) == alert["data"]
-    assert dispatcher.first_alert(alert) is None
-
-
-def test_first_alert_ignores_events_that_are_not_alerts():
-    dispatcher = PushDispatcher(None)
-    assert dispatcher.first_alert(message(alert=False)) is None
-    assert dispatcher.first_alert({"type": "event", "data": {"alert": True}}) is None
-    assert dispatcher.first_alert({"type": "event"}) is None
-
-
-def test_first_alert_ignores_other_message_types():
-    assert PushDispatcher(None).first_alert({**message(), "type": "status"}) is None
-
-
 def test_alert_payload_carries_only_ids():
     event = {"uuid": uuid4(), "camera_uuid": uuid4(), "label": "person", "snapshot": "x.jpg"}
     site = uuid4()
@@ -231,3 +209,16 @@ def test_alert_payload_carries_only_ids():
         "camera": str(event["camera_uuid"]),
         "site": str(site),
     }
+
+
+async def test_deliver_each_says_which_targets_a_retry_may_reach():
+    from app.modules.alerting.services.targets import FAILED, RETRY, SENT, deliver_each
+
+    gone, plain, fine = target(), target(), target()
+    providers = {PushProvider.NTFY: FakeProvider(Delivery(ok=False, gone=True, error="gone"))}
+    assert await deliver_each([gone], {}, providers) == [FAILED]
+    providers = {PushProvider.NTFY: FakeProvider(Delivery(ok=False, error="busy"))}
+    assert await deliver_each([plain], {}, providers) == [RETRY]
+    providers = {PushProvider.NTFY: FakeProvider(Delivery(ok=True))}
+    assert await deliver_each([fine], {}, providers) == [SENT]
+    assert await deliver_each([target()], {}, {}) == [FAILED]

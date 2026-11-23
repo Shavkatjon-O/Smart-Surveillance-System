@@ -101,3 +101,11 @@ async def test_updates_are_routed_to_linking_stopping_and_removal(monkeypatch):
     assert await bot.handle({"edited_message": {}}) == "ignored"
     assert calls == [("link", TOKEN, -42), ("gone", 7, True), ("reply", 7), ("gone", -42, False)]
     assert json.dumps(calls)
+
+
+def test_only_unreachable_busy_or_failing_telegram_answers_are_worth_a_retry():
+    assert TelegramError(0, "Telegram does not answer").transient
+    assert TelegramError(429, "Too Many Requests").transient
+    assert TelegramError(502, "Bad Gateway").transient
+    assert not TelegramError(400, "Bad Request: chat not found").transient
+    assert not TelegramError(403, "Forbidden: bot was blocked by the user").transient

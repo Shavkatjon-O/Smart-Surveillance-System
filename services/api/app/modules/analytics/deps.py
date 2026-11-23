@@ -51,20 +51,16 @@ def require_analytics_token(authorization: str = Header("")) -> None:
         raise Unauthorized("invalid_token", "The analytics token is missing or wrong")
 
 
-def get_ingest_service(
-    session: AsyncSession = Depends(get_db),
-    authorized: None = Depends(require_analytics_token),
-) -> AnalyticsIngestService:
-    """Build the ingest service for a request of the analytics service.
+def get_ingest_service(authorized: None = Depends(require_analytics_token)) -> AnalyticsIngestService:
+    """Build the intake service for a request of an engine that posts.
 
     Args:
-        session: Request-scoped database session.
         authorized: Result of the token check.
 
     Returns:
         The service.
     """
-    return AnalyticsIngestService(session)
+    return AnalyticsIngestService()
 
 
 def get_follow_service(
