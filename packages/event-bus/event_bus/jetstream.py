@@ -196,6 +196,7 @@ class NatsBus(Bus):
         js: The JetStream context, None until connected.
         pulls: Pull subscriptions bound to durable consumers, by durable name.
         reconnects: Callbacks run after a reconnect.
+        closing: Whether close is running, so the disconnect it causes is not reported as a loss.
     """
 
     def __init__(self, servers: str | list[str], name: str = "sss", connect_wait: float = 30.0):
@@ -215,6 +216,7 @@ class NatsBus(Bus):
         self.js: JetStreamContext | None = None
         self.pulls: dict[str, JetStreamContext.PullSubscription] = {}
         self.reconnects: list[Callable[[], Awaitable[None]]] = []
+        self.closing = False
 
     @property
     def connected(self) -> bool:
@@ -229,6 +231,7 @@ class NatsBus(Bus):
         """
         if self.client is not None and not self.client.is_closed:
             return
+        self.closing = False
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.connect_wait if self.connect_wait else None
         delay = 0.5
@@ -260,6 +263,7 @@ class NatsBus(Bus):
         """Drain the connection and close it."""
         client, self.client, self.js = self.client, None, None
         self.pulls.clear()
+        self.closing = True
         if client is None or client.is_closed:
             return
         try:
@@ -286,8 +290,9 @@ class NatsBus(Bus):
                 logger.exception("A reconnect callback failed")
 
     async def disconnected(self) -> None:
-        """Log a lost connection."""
-        logger.warning("Lost the connection to NATS")
+        """Log a lost connection, unless close caused it."""
+        if not self.closing:
+            logger.warning("Lost the connection to NATS")
 
     async def failed(self, error: Exception) -> None:
         """Log a connection error.
