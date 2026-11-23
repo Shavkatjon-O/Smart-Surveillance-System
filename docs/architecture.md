@@ -54,6 +54,8 @@ The first diagram shows the requests between the containers, the second the vide
 
 ![Containers: video](diagrams/containers-video.png)
 
+![Event pipeline: producers, the EVENTS stream and its workers](diagrams/event-pipeline.png)
+
 ## Dependency rules
 
 - Routers call services, and services own the transactions; routers import neither sqlalchemy nor the database module.
