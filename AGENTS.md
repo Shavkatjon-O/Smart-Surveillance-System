@@ -28,6 +28,13 @@ Run the connector agent's and the camera adapters' checks the same way, with -w 
 scripts/export-openapi.sh
 ```
 
+Render a changed diagram source in docs/diagrams to its PNG card with headless Chrome, and check that no Markdown holds a mermaid block and every source has its card:
+
+```
+scripts/render-diagrams.sh docs/diagrams/<name>.mmd
+scripts/check-diagrams.sh
+```
+
 Run the development kit, the compose project smart-surveillance-dev in deploy/devkit with a simulated site, from the repository root; tools/devkit/README.md describes it:
 
 ```
@@ -64,6 +71,7 @@ alembic revision --autogenerate -m "<message>"
 - Keep the .env of every deploy target and apps/tv/cameras.local.properties out of git and never print their values, because they hold the camera and service passwords.
 - Never bypass the local pre-push hook; when it refuses, remove the private value from the commits and push again, because the hook is the last check before data becomes public.
 - Use only models whose licence allows a public repository and keep every other model optional behind an explicit download flag, and never use Ultralytics YOLO weights or code, because their AGPL licence would bind the whole project.
+- Draw every diagram as docs/diagrams/<name>.mmd, commit the PNG card scripts/render-diagrams.sh renders beside it and embed that PNG in Markdown or MDX, never a mermaid block, and split or lay out again a diagram the renderer reports as shrunk until it reads at the card's width, because the documents show the cards and scripts/check-diagrams.sh fails CI on a mermaid block or a source without its card.
 - Keep model weights and engines out of git; scripts/download-models.sh, download-face-models.sh and download-secondary-models.sh fetch them with pinned checksums and print each licence.
 - Give every Python module, class and function outside tests and migrations a docstring with Args, Returns, Yields, Raises and Attributes sections where they apply, and add a comment only where the code cannot show its reason, because ruff enforces the docstring convention and the docstrings are the code's reference; write no emojis or non-ASCII characters in code, configs or docs.
 

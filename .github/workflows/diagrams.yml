@@ -1,0 +1,36 @@
+name: diagrams
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.mmd"
+      - "docs/diagrams/**"
+      - "scripts/check-diagrams.sh"
+      - ".github/workflows/diagrams.yml"
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.mmd"
+      - "docs/diagrams/**"
+      - "scripts/check-diagrams.sh"
+      - ".github/workflows/diagrams.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagrams:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that every diagram is a PNG card with its source and no Markdown holds a mermaid block
+        run: scripts/check-diagrams.sh

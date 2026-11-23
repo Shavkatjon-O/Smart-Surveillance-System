@@ -339,7 +339,7 @@ The host needs no Node or Python; every tool runs in a container as your own use
 - Console: Next.js static export in apps/console, checked with pnpm lint, typecheck and build.
 - Connector: the site agent in services/connector and the camera adapters in packages/camera-adapters, both uv workspace members with their own tests.
 - API contract: packages/contracts/openapi.json, written by scripts/export-openapi.sh and checked by the API tests.
-- Diagrams: each diagram is a Mermaid source in docs/diagrams, which scripts/render-diagrams.sh draws with headless Chrome into the PNG card beside it; the card is committed and Markdown embeds it as an image.
+- Diagrams: each diagram is a Mermaid source in docs/diagrams, which scripts/render-diagrams.sh draws with headless Chrome into the PNG card beside it; the card is committed and Markdown embeds it as an image. scripts/check-diagrams.sh, which CI runs, fails on a mermaid block in Markdown or MDX and on a source without its card.
 - Development kit: scripts/devkit.sh runs deploy/devkit, the whole stack as the compose project smart-surveillance-dev with a simulated site, a fake Telegram API and Mailpit, binding 127.0.0.1 only, and seeds a demo organisation; tools/devkit/README.md describes it.
 - Mobile app: Flutter in apps/mobile, checked with flutter analyze and flutter test; its API client is generated from packages/contracts/openapi.json.
 - TV app: Kotlin in apps/tv/app with unit tests run by Gradle.
