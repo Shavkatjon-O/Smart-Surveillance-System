@@ -51,9 +51,6 @@ x-dev-v380-camera: &dev-v380-camera
 x-dev-v380-relay: &dev-v380-relay
   image: smart-surveillance-dev-v380-relay:local
   profiles: !override [devkit]
-  networks: !override
-    cams:
-    site-lan:
 
 services:
   postgres:
@@ -127,6 +124,10 @@ services:
     depends_on:
       v380-camera-porch:
         condition: service_healthy
+    networks: !override
+      cams:
+      site-lan:
+        ipv4_address: 172.31.250.31
 
   v380-relay-ptz-2:
     <<: *dev-v380-relay
@@ -143,6 +144,10 @@ services:
     depends_on:
       v380-camera-garage:
         condition: service_healthy
+    networks: !override
+      cams:
+      site-lan:
+        ipv4_address: 172.31.250.32
 
   web:
     extends:
