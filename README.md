@@ -142,7 +142,7 @@ flowchart LR
 | analytics | smart-surveillance-system-analytics:local | DeepStream 9.1: detection, tracking, rules, faces, appearance, pose, plates, tamper watch, the rolling recording buffer and event clips |
 | v380-ptz-1, v380-ptz-2 | smart-surveillance-system-v380-bridge:local | One bridge per V380 camera: V380 protocol in, RTSP on 8554 and ONVIF with PTZ, light and siren on 8080 out |
 | web | smart-surveillance-system-web:local | nginx serving the Next.js static export and proxying the API and the video websocket |
-| connector | smart-surveillance-connector:local | Runs at a remote site from docker-compose.connector.yml: pairing, LAN discovery, camera credentials and a go2rtc restream the server pulls |
+| connector | smart-surveillance-connector:local | Runs at a remote site from deploy/connector: pairing, LAN discovery, camera credentials and a go2rtc restream the server pulls |
 
 The analytics service reads its configuration from the backend every 5 s, so zone and rule changes apply without a restart, and posts events and observations back on internal routes that nginx never serves. Only web and go2rtc's RTSP and WebRTC ports publish ports: web on loopback and on SSS_LAN_BIND, RTSP on 8554 and WebRTC on 8555 on SSS_LAN_BIND only, so phones on the local Wi-Fi reach the app and live video while a VPN on the same computer does not. The apps exchange WebRTC offers and answers through the API, which checks the member's access to the camera first.
 
@@ -159,10 +159,10 @@ A Jetson Orin Nano profile exists but has not run on a Jetson; see Jetson Orin N
 
 ## Quick start
 
-1. Copy the configuration and fill in the secrets:
+1. Copy the server's configuration and fill in the secrets:
 
    ```
-   cp .env.example .env
+   cp deploy/server/.env.example deploy/server/.env
    ```
 
    Set SSS_SECRET_KEY to a long random value, SSS_TV_RTSP_PASSWORD and SSS_ANALYTICS_TOKEN to two other random values, SSS_ADMIN_PASSWORD, SSS_TIMEZONE to the zone schedules use, and SSS_LAN_BIND to this computer's local network address, reserved in the router so it does not change.
@@ -177,13 +177,14 @@ A Jetson Orin Nano profile exists but has not run on a Jetson; see Jetson Orin N
 
    The first fetches RF-DETR and exports it to ONNX, the second the InsightFace face models, which are published for non-commercial research only, and the third the appearance, pose and plate models. The scripts read SSS_ANALYTICS_MODELS_DIR and SSS_ANALYTICS_FACE_MODELS_DIR from the shell, not from .env, and default to services/analytics/models and services/analytics/models/face, the folders compose mounts by default.
 
-3. Start the stack:
+3. Start the stack from its folder:
 
    ```
+   cd deploy/server
    docker compose up -d --build
    ```
 
-   The first start of the analytics builds its TensorRT engines into the analytics-engines volume, which takes a few minutes; later starts reuse them.
+   deploy/README.md describes this target and the others: the hosted platform, the connector, a Jetson site and the development kit. The first start of the analytics builds its TensorRT engines into the analytics-engines volume, which takes a few minutes; later starts reuse them.
 
 4. Open http://127.0.0.1:8750 and sign in with SSS_ADMIN_USERNAME and SSS_ADMIN_PASSWORD. The backend creates that user on first start and never overwrites its password afterwards. That user is the first platform admin, and its own organisation is on the unlimited internal plan; other organisations start on the free plan.
 
@@ -191,7 +192,7 @@ A Jetson Orin Nano profile exists but has not run on a Jetson; see Jetson Orin N
 
 ## Configuration reference
 
-Every variable lives in .env, which mirrors .env.example group by group. A setting can also come from a Docker secret named after the variable in lower case under /run/secrets; docker-compose.secrets.yml switches the database password and the secret key to secret files in SSS_SECRETS_DIR.
+Every variable lives in deploy/server/.env, which mirrors deploy/server/.env.example group by group. A setting can also come from a Docker secret named after the variable in lower case under /run/secrets; the central target in deploy/central reads the database password and the secret key that way, from the files in the folder its SSS_SECRETS_DIR names.
 
 | Name | Default | Meaning |
 |---|---|---|
@@ -262,8 +263,8 @@ Every variable lives in .env, which mirrors .env.example group by group. A setti
 | SSS_TIMEZONE | UTC | Time zone of schedules, counts and area resets |
 | SSS_ANALYTICS_URL | http://analytics:8080 | Status endpoint of the analytics service |
 | SSS_ANALYTICS_TOKEN | none | Shared token of the backend's internal analytics routes and the analytics status endpoint |
-| SSS_ANALYTICS_MODELS_DIR | ./analytics/models | Host folder of the analytics models, mounted read-only |
-| SSS_ANALYTICS_FACE_MODELS_DIR | ./analytics/models/face | Host folder of the face models, mounted read-only |
+| SSS_ANALYTICS_MODELS_DIR | ../../services/analytics/models | Host folder of the analytics models, mounted read-only; a relative path starts at deploy/server |
+| SSS_ANALYTICS_FACE_MODELS_DIR | ../../services/analytics/models/face | Host folder of the face models, mounted read-only; a relative path starts at deploy/server |
 | SSS_ANALYTICS_DETECTOR | rfdetr-medium | Shared detector |
 | SSS_ANALYTICS_APPEARANCE | true | Appearance vectors and journeys on views that allow them |
 | SSS_ANALYTICS_POSE | true | Pose and falls on views with falls on |
@@ -275,8 +276,7 @@ Every variable lives in .env, which mirrors .env.example group by group. A setti
 | SSS_ANALYTICS_CLIP_AFTER | 5 | Seconds a clip runs after its event ends |
 | SSS_ANALYTICS_CLIP_MAX | 60 | Longest clip in seconds |
 | SSS_ANALYTICS_BUFFER_SECONDS | 120 | Seconds of each camera's stream kept in memory for clips |
-| SSS_SECRETS_DIR | empty | Folder of the secret files docker-compose.secrets.yml mounts |
-| CAMERA_PASSWORD | none | Password of the EZVIZ cameras for the OpenCV viewer in cv/ |
+| CAMERA_PASSWORD | none | Password of the EZVIZ cameras for the OpenCV viewer in tools/cv-viewer |
 | CV_CAMERA_HOSTS | 192.168.1.104,192.168.1.106 | Addresses the OpenCV viewer opens |
 | V380_USERNAME | admin | Device login of the V380 cameras |
 | V380_PASSWORD | none | Device password of the V380 cameras |
@@ -336,7 +336,7 @@ The weights are never committed. The DeepStream base image is under the NVIDIA D
 
 ### Streaming
 
-The backend registers two go2rtc streams per enabled camera, main and sub, each with the camera's RTSP URL followed by an ffmpeg H.264 video transcode without audio, and reconciles go2rtc with the registry on every monitor tick. The browser player asks for H.264 only, so H.265 cameras play through the transcode; with sound on, the camera page also asks for audio, which go2rtc takes from the camera's own source. deploy/go2rtc/go2rtc.yaml holds no camera streams and is mounted read-only, so camera credentials stay out of files; its h264 template encodes with h264_nvenc and decodes on the CPU.
+The backend registers two go2rtc streams per enabled camera, main and sub, each with the camera's RTSP URL followed by an ffmpeg H.264 video transcode without audio, and reconciles go2rtc with the registry on every monitor tick. The browser player asks for H.264 only, so H.265 cameras play through the transcode; with sound on, the camera page also asks for audio, which go2rtc takes from the camera's own source. deploy/server/go2rtc/go2rtc.yaml holds no camera streams and is mounted read-only, so camera credentials stay out of files; its h264 template encodes with h264_nvenc and decodes on the CPU.
 
 ### Events
 
@@ -348,14 +348,15 @@ Every enabled network device and camera is probed with a TCP connect every SSS_H
 
 ### Composed TV streams
 
-The backend also serves the PC side of an earlier TV path: TV clients pair with a code through /api/v1/tv, and go2rtc's exec streams tv_wall and tv_tile_0 to tv_tile_15 in deploy/go2rtc/go2rtc.yaml run deploy/go2rtc/go2rtc-tv.sh, which composes the cameras with ffmpeg on h264_nvenc. The Android TV app in tv/ does not use this path.
+The backend also serves the PC side of an earlier TV path: TV clients pair with a code through /api/v1/tv, and go2rtc's exec streams tv_wall and tv_tile_0 to tv_tile_15 in deploy/server/go2rtc/go2rtc.yaml run deploy/server/go2rtc/go2rtc-tv.sh, which composes the cameras with ffmpeg on h264_nvenc. The Android TV app in apps/tv does not use this path.
 
 ## Jetson Orin Nano
 
-docker-compose.jetson.yml runs the stack on a Jetson Orin Nano with DeepStream 9.1 or newer on JetPack 7.2, which has no hardware video encoder:
+deploy/jetson runs the stack on a Jetson Orin Nano with DeepStream 9.1 or newer on JetPack 7.2, which has no hardware video encoder:
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.jetson.yml up -d --build
+cp deploy/jetson/.env.example deploy/jetson/.env
+docker compose -f deploy/jetson/docker-compose.yml up -d --build
 ```
 
 The analytics service uses RF-DETR Nano at 4 frames per second, encodes clips with libx264, keeps one minute of buffer, reads no number plates and is capped at 3 GB; go2rtc runs from the plain image with a libx264 transcode template and no GPU reservation. Export the detectors on a PC with scripts/download-models.sh --all and copy the model folder over. Verified on a PC: the merged configuration, that the DeepStream 9.1 image has an arm64 variant with CUDA 13.2, and the libx264 clip path. Not verified: the stack has never run on a Jetson, so the arm64 build of the analytics image and its parser library, RF-DETR Nano's speed there and the CPU cost of go2rtc's browser transcodes are open, and the composed TV streams still need h264_nvenc.
@@ -369,7 +370,7 @@ The host needs no Node or Python; every tool runs in a container as your own use
 - Console: Next.js static export in apps/console, checked with pnpm lint, typecheck and build.
 - Connector: the site agent in services/connector and the camera adapters in packages/camera-adapters, both uv workspace members with their own tests.
 - API contract: packages/contracts/openapi.json, written by scripts/export-openapi.sh and checked by the API tests.
-- Development kit: scripts/devkit.sh runs the whole stack as the compose project smart-surveillance-dev with a simulated site, a fake Telegram API and Mailpit, binding 127.0.0.1 only, and seeds a demo organisation; tools/devkit/README.md describes it.
+- Development kit: scripts/devkit.sh runs deploy/devkit, the whole stack as the compose project smart-surveillance-dev with a simulated site, a fake Telegram API and Mailpit, binding 127.0.0.1 only, and seeds a demo organisation; tools/devkit/README.md describes it.
 - Mobile app: Flutter in apps/mobile, checked with flutter analyze and flutter test; its API client is generated from packages/contracts/openapi.json.
 - TV app: Kotlin in apps/tv/app with unit tests run by Gradle.
 - OpenCV viewer: tools/cv-viewer holds a separate desktop viewer for the EZVIZ streams, described in tools/cv-viewer/README.md.

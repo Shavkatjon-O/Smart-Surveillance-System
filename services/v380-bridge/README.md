@@ -4,7 +4,7 @@ A Dockerfile that builds the pinned upstream V380 decoder, a C# project that log
 
 ## Run
 
-The compose services v380-ptz-1 and v380-ptz-2 each build this image for one camera and pass its id, address and credentials on the command line:
+The compose services v380-ptz-1 and v380-ptz-2 of deploy/server each build this image for one camera and pass its id, address and credentials on the command line; from deploy/server:
 
 ```
 docker compose up -d --build v380-ptz-1 v380-ptz-2

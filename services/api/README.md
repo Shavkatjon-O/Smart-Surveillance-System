@@ -4,7 +4,7 @@ The FastAPI platform API of Smart Surveillance System: the camera registry, live
 
 ## Run
 
-The compose service backend builds the image, applies the Alembic migrations and starts uvicorn on port 8000 inside the stack network:
+The compose service backend builds the image, applies the Alembic migrations and starts uvicorn on port 8000 inside the stack network; from deploy/server:
 
 ```
 docker compose up -d --build backend
@@ -32,7 +32,7 @@ tests/test_architecture.py runs the import-linter contracts of pyproject.toml, w
 
 ## Configuration
 
-Settings come from SSS_ environment variables and the .env file at the repository root. The full list with defaults is the Settings class in app/core/config.py; the groups are:
+Settings come from SSS_ environment variables and the .env file of the deploy target, such as deploy/server/.env. The full list with defaults is the Settings class in app/core/config.py; the groups are:
 
 | Group | Variables |
 |---|---|

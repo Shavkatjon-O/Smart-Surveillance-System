@@ -15,12 +15,12 @@ Smart Surveillance System is a monorepo of products, services and packages aroun
 | Service | services/v380-relay | Serves one V380 camera over RTSP with our own V380 client and takes its controls over HTTP |
 | Package | packages/camera-adapters | Python package camera_adapters: one adapter per kind of camera behind one interface |
 | Package | packages/contracts | The generated OpenAPI document of the API |
-| Deploy | deploy/go2rtc | go2rtc configuration and the TV stream composer script |
+| Deploy | deploy | One folder per deployment target, server, central, connector, jetson and devkit, each with one docker-compose.yml and its go2rtc configuration |
 | Tools | tools/devkit | Simulated site for development: IP cameras, V380 cameras, seed data |
 | Tools | tools/cv-viewer | OpenCV viewer of the cameras |
 | Scripts | scripts | Shell scripts: model downloads and the OpenAPI export |
 
-docker-compose.yml and docker-compose.jetson.yml at the root run the stack. The Python services and packages form one uv workspace with one uv.lock.
+Each deployment target runs from its own folder in deploy, as deploy/README.md describes. The Python services and packages form one uv workspace with one uv.lock.
 
 ## Business domains
 

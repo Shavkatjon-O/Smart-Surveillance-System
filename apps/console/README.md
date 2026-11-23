@@ -7,7 +7,7 @@ The web console of Smart Surveillance System: the wall, camera pages, events, pe
 The compose service web builds the image and serves the export on SSS_WEB_PORT. For development, start the stack and run the dev server, which rewrites /api and /go2rtc to SSS_DEV_ORIGIN:
 
 ```
-docker compose up -d --build web
+docker compose -f deploy/server/docker-compose.yml up -d --build web
 pnpm install --frozen-lockfile && pnpm dev
 ```
 

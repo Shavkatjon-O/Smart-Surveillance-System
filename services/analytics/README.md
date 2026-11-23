@@ -135,14 +135,14 @@ on first use into the engine volume after the ONNX digest is checked.
 
 ## Run
 
-The service runs as the analytics service of the repository's docker-compose.yml, which reads its views, zones and lines
+The service runs as the analytics service of deploy/server/docker-compose.yml, which reads its views, zones and lines
 from the backend. Download the models first:
 
 ```
 scripts/download-models.sh
 scripts/download-face-models.sh
 scripts/download-secondary-models.sh
-docker compose up -d --build analytics
+docker compose -f deploy/server/docker-compose.yml up -d --build analytics
 ```
 
 Without SSS_ANALYTICS_BACKEND_URL the service reads the same configuration from the JSON file in
@@ -151,9 +151,9 @@ the engine volume, which takes about a minute.
 
 ## Configuration
 
-The variables in .env.example, from the model folders to the clip lengths, are described in the configuration
-reference of the repository's README. The service also reads these, which .env.example does not list, so they keep
-their defaults unless set:
+The variables in deploy/server/.env.example, from the model folders to the clip lengths, are described in the
+configuration reference of the repository's README. The service also reads these, which the example does not list, so
+they keep their defaults unless set:
 
 | Name | Default | Meaning |
 |---|---|---|
