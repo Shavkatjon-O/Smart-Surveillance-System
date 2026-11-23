@@ -1,36 +1,33 @@
 """Containers, video: the video between the containers, the cameras and the players."""
 
-from diagrams import Cluster, Diagram, Edge
+from diagrams import Cluster, Diagram, Edge, Node
 from diagrams.aws.iot import IotCamera, IotDeviceGateway, IotGeneric
 from diagrams.generic.os import Android
 from diagrams.onprem.client import Client
 from diagrams.onprem.compute import Server
-from diagrams.onprem.network import Nginx
 from diagrams.programming.framework import Flutter
 
-BOTTOM = {"labelloc": "b"}
+MAIN = {"group": "main"}
 
-with Diagram(direction="TB", show=False):
+with Diagram(direction="LR", show=False):
     with Cluster("Site LAN"):
-        cameras = IotCamera("EZVIZ and\nONVIF cameras")
         v380 = IotCamera("V380 cameras")
-        tv = Android("Android TV app")
-    with Cluster("Compose stack", graph_attr=BOTTOM):
-        bridges = IotDeviceGateway("v380 bridges, or\nv380 relays with\nv380-native")
-        go2rtc = Server("go2rtc\nRTSP 8554\nWebRTC 8555")
-        analytics = IotGeneric("analytics\nDeepStream")
-        web = Nginx("web\nnginx")
-    with Cluster("Phones and browsers", graph_attr=BOTTOM):
-        browser = Client("Browser")
+        cameras = IotCamera("Cameras\nONVIF, EZVIZ", **MAIN)
+    with Cluster("Compose stack"):
+        bridges = IotDeviceGateway("V380 bridges\nor relays")
+        analytics = IotGeneric("Analytics\nDeepStream")
+        through = Node(waypoint="true", **MAIN)
+        media = Server("Media server\ngo2rtc", **MAIN)
+    with Cluster("Players"):
+        console = Client("Web console\nvia nginx", **MAIN)
         phone = Flutter("Mobile app")
+        tv = Android("TV app\nAndroid TV")
 
-    cameras >> Edge(label="RTSP") >> tv
-    v380 >> Edge(label="V380") >> tv
-    v380 >> Edge(label="V380 protocol") >> bridges
-    cameras >> Edge(label="RTSP: H.265", minlen="2") >> go2rtc
-    bridges >> Edge(label="RTSP") >> go2rtc
-    go2rtc >> Edge(label="RTSP composed\nTV streams", style="dashed", constraint="false") >> tv
-    go2rtc >> Edge(label="RTSP: original\nH.265, NVDEC") >> analytics
-    go2rtc >> Edge(label="websocket: H.264\nNVENC transcode") >> web
-    web >> Edge(label="HTTPS: /go2rtc\nwebsocket") >> browser
-    go2rtc >> Edge(label="WebRTC:\nH.264", minlen="2") >> phone
+    v380 >> Edge(label="V380") >> bridges
+    cameras >> Edge(label="RTSP", main="true", arrowhead="none") >> through
+    through >> Edge(main="true") >> media
+    bridges >> Edge() >> media
+    analytics << Edge(label="H.265, NVDEC") << media
+    media >> Edge(label="H.264, NVENC", main="true") >> console
+    media >> Edge(label="WebRTC") >> phone
+    media >> Edge(label="Composed", style="dashed") >> tv
