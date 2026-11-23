@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 2.0
 RECONNECT_WAIT = 1.0
+DRAIN_SECONDS = 3.0
 UNREACHABLE = (
     ConnectionClosedError,
     ConnectionReconnectingError,
@@ -260,16 +261,17 @@ class NatsBus(Bus):
         logger.info("Connected to NATS at %s", self.client.connected_url.netloc if self.client.connected_url else "")
 
     async def close(self) -> None:
-        """Drain the connection and close it."""
+        """Drain the connection, which sends what is pending, and close it within a few seconds."""
         client, self.client, self.js = self.client, None, None
         self.pulls.clear()
         self.closing = True
         if client is None or client.is_closed:
             return
         try:
-            await client.drain()
+            await asyncio.wait_for(client.drain(), DRAIN_SECONDS)
         except Exception as exc:
             logger.debug("Draining the NATS connection failed: %s", exc)
+        if not client.is_closed:
             await client.close()
 
     def on_reconnect(self, callback: Callable[[], Awaitable[None]]) -> None:

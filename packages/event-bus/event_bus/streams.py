@@ -78,6 +78,7 @@ class ConsumerSpec:
         ack_wait: Seconds the server waits for an acknowledgement before it delivers again.
         backoff: Seconds to wait before each further delivery of a failed message.
         max_ack_pending: Messages delivered and not yet acknowledged at most, across replicas.
+        parallel: Messages one process handles at once; 1 handles them in the stream's order.
         description: What the consumer does.
     """
 
@@ -87,6 +88,7 @@ class ConsumerSpec:
     ack_wait: float = 30.0
     backoff: tuple[float, ...] = field(default=(1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0))
     max_ack_pending: int = 256
+    parallel: int = 1
     description: str = ""
 
     @property
@@ -185,6 +187,7 @@ NOTIFIER_TELEGRAM = ConsumerSpec(
     ack_wait=120.0,
     backoff=(5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 900.0, 900.0),
     max_ack_pending=64,
+    parallel=8,
     description="Sends every alert to the organisation's Telegram chats",
 )
 
@@ -195,6 +198,7 @@ NOTIFIER_PUSH = ConsumerSpec(
     ack_wait=120.0,
     backoff=(5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 900.0, 900.0),
     max_ack_pending=64,
+    parallel=8,
     description="Pushes every alert to the members' devices",
 )
 

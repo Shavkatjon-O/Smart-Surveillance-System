@@ -114,3 +114,25 @@ async def test_a_dead_letter_is_written_once_per_message(bus, clock):
     deliveries = await bus.fetch(EVENT_STORE, 1, 0.05)
     assert deliveries == []
     assert len(bus.stored(DEAD_LETTERS.name)) == 1
+
+
+async def test_a_parallel_consumer_handles_a_batch_at_once(bus):
+    import asyncio
+    from dataclasses import replace
+
+    spec = replace(EVENT_STORE, parallel=4)
+    running = []
+    peak = []
+
+    async def handler(envelope, delivery):
+        running.append(envelope.id)
+        peak.append(len(running))
+        await asyncio.sleep(0.05)
+        running.remove(envelope.id)
+
+    runner = ConsumerRunner(bus, spec, handler, fetch_seconds=0.05)
+    for name in "abcdefgh":
+        await bus.publish(SUBJECT, change(name))
+    assert await runner.once() == 8
+    assert max(peak) == 4
+    assert runner.handled == 8

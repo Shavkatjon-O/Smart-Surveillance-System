@@ -93,7 +93,9 @@ def dead_letter_envelope(spec: ConsumerSpec, delivery: Delivery, reason: str) ->
 class ConsumerRunner:
     """Runs one durable consumer: fetch, handle, then acknowledge, delay or dead-letter each message.
 
-    Several processes may run the same consumer; the server shares the messages among them.
+    Several processes may run the same consumer; the server shares the messages among them. Within a process the
+    runner handles up to the consumer's parallel messages of a batch at once, and one at a time in stream order when
+    parallel is 1.
 
     Attributes:
         bus: The bus.
@@ -163,8 +165,22 @@ class ConsumerRunner:
         self.last_tick = time.monotonic()
         if self.on_tick is not None:
             self.on_tick()
-        for delivery in deliveries:
-            await self.process(delivery)
+        if self.spec.parallel <= 1:
+            for delivery in deliveries:
+                await self.process(delivery)
+            return len(deliveries)
+        slots = asyncio.Semaphore(self.spec.parallel)
+
+        async def limited(delivery: Delivery) -> None:
+            """Handle one delivery once a slot is free.
+
+            Args:
+                delivery: The delivery.
+            """
+            async with slots:
+                await self.process(delivery)
+
+        await asyncio.gather(*(limited(delivery) for delivery in deliveries))
         return len(deliveries)
 
     async def process(self, delivery: Delivery) -> None:
