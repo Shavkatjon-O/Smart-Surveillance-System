@@ -18,7 +18,7 @@ Every commit message follows Conventional Commits 1.0.0: a lowercase type, an op
 | test | Tests only |
 | revert | Reverts an earlier commit |
 
-Scopes name the affected part: api, console, tv, analytics, connector, adapters, devkit, deploy, docs. Mark a breaking change with an exclamation mark before the colon or a BREAKING CHANGE footer.
+Scopes name the affected part: api, console, tv, analytics, connector, adapters, bus, devkit, deploy, docs. Mark a breaking change with an exclamation mark before the colon or a BREAKING CHANGE footer.
 
 Stage and commit explicit paths, never everything at once:
 
@@ -35,6 +35,8 @@ Run the checks of every area you changed from the repository root before committ
 docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_CACHE_DIR=/tmp/uv-cache -v $PWD:/repo -w /repo/services/api ghcr.io/astral-sh/uv:python3.13-bookworm-slim sh -c "uv sync --frozen --all-packages && uv run --frozen ruff check . && uv run --frozen ruff format --check . && uv run --frozen pytest -q"
 
 docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_CACHE_DIR=/tmp/uv-cache -v $PWD:/repo -w /repo/packages/camera-adapters ghcr.io/astral-sh/uv:python3.13-bookworm-slim sh -c "uv sync --frozen --all-packages && uv run --frozen ruff check . && uv run --frozen pytest -q"
+
+docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_CACHE_DIR=/tmp/uv-cache -v $PWD:/repo -w /repo/packages/event-bus ghcr.io/astral-sh/uv:python3.13-bookworm-slim sh -c "uv sync --frozen --all-packages && uv run --frozen ruff check . && uv run --frozen ruff format --check . && uv run --frozen pytest -q"
 
 docker build --target test --build-context event-bus=packages/event-bus -t smart-surveillance-system-analytics:test services/analytics
 docker run --rm -u $(id -u):$(id -g) -e RUFF_CACHE_DIR=/tmp/ruff-cache -v $PWD/services/analytics:/work:ro -w /work --entrypoint sh smart-surveillance-system-analytics:test -c "ruff check . && ruff format --check . && pytest -q -p no:cacheprovider"

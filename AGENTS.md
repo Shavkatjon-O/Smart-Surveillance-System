@@ -22,7 +22,7 @@ docker run --rm -u $(id -u):$(id -g) -e RUFF_CACHE_DIR=/tmp/ruff-cache -v $PWD/s
 docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -e COREPACK_HOME=/tmp/corepack -e PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin -v $PWD/apps/console:/app -w /app node:24 sh -c "mkdir -p /tmp/bin && corepack enable --install-directory /tmp/bin && pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm build"
 ```
 
-Run the connector agent's and the camera adapters' checks the same way, with -w /repo/services/connector or -w /repo/packages/camera-adapters in place of the API folder. Write the OpenAPI document after changing a route or schema, because the API tests compare it with the app:
+Run the connector agent's, the camera adapters' and the event bus's checks the same way, with -w /repo/services/connector, -w /repo/packages/camera-adapters or -w /repo/packages/event-bus in place of the API folder; the event bus's JetStream tests also run when SSS_TEST_NATS_URL names a NATS server with JetStream, such as one started with docker run -d --name nats nats:2.15.3-alpine -js on a network the test container joins. Write the OpenAPI document after changing a route or schema, because the API tests compare it with the app:
 
 ```
 scripts/export-openapi.sh
@@ -98,6 +98,17 @@ alembic revision --autogenerate -m "<message>"
 - Keep camera passwords of connector cameras on the connector, and let connector discovery sweep only site LAN interfaces, never Docker, container, Kubernetes or VPN interfaces unless SSS_CONNECTOR_INTERFACES lists them, because a sweep of a VPN or bridge network probes networks that are not the site's.
 - Test Telegram alerts only against the fake Bot API in tools/devkit/telegram or a mock transport, never with a real bot token, because a second poller of a live bot takes its updates away from the service that owns it.
 - Show only the simulated site in screenshots, demos and seed data, because the repository is public.
+
+### Event bus
+
+- Send every event change, alert and usage record through the Bus interface of packages/event-bus, and never write an event, send an alert or record usage from a request or an engine directly, because the event store, the notifier and metering must see one pipeline that survives restarts and runs with several replicas. The exceptions are face events, which the face route writes in one transaction with their face sample and then announces and alerts through the bus, the test message a member sends to a channel, and the development kit's seed.
+- Wrap every message in the CloudEvents envelope, give its type a versioned name with a JSON Schema in packages/contracts/events, and raise the version when its data changes incompatibly, because producers and consumers deploy separately.
+- Carry the whole event in every event change and keep the event store's merge monotonic, the alert only turning on, ends only set and media only added, because changes arrive at least once and not always in order.
+- Derive the id of a message that may be built twice from what it is about with stable_id, as alerts and usage do, because the stream drops a repeated id only within its duplicate window.
+- Keep every handler idempotent, raise Retry for a failure a later delivery may cure and Reject for a message that can never succeed, because every consumer delivers at least once and dead-letters after its last attempt.
+- Keep the live fan-out on sss.<organisation>.<site>.live outside every stream, because each API replica needs every message once and reloads its clients after a reconnect.
+- Change a stream's or a consumer's limits only in packages/event-bus/event_bus/streams.py, with the reason in its README, because every process provisions them at start.
+- Keep NATS on the internal bus network without a published port, and join only the backend, the workers and the analytics service to it, because NATS has no authentication yet.
 
 ### Streaming
 

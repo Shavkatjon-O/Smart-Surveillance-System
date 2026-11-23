@@ -4,6 +4,6 @@ description: Every environment variable, generated from the env example of every
 icon: SlidersHorizontal
 ---
 
-Every service reads its settings from the environment. Each deployment target reads the .env file in its own folder under deploy, which mirrors the target's .env.example group by group: compose passes it to the API and the analytics engine and interpolates the rest into the services that need them. Copy the example and change what your site needs. The server's example is listed in full; central and jetson list only where they differ from it.
+Every service reads its settings from the environment. Each deployment target reads the .env file in its own folder under deploy, which mirrors the target's .env.example group by group: compose passes it to the API and the analytics engine and interpolates the rest into the services that need them. Copy the example and change what your site needs. The API, its workers and the analytics engine reach the event bus at SSS_NATS_URL, the nats service of the same target by default. The server's example is listed in full; central and jetson list only where they differ from it.
 
 <include>../../../../generated/configuration.md</include>

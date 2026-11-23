@@ -36,7 +36,7 @@ One ffmpeg process per camera copies the stream into two-second segments in memo
 
 ## Configuration from the API
 
-The API owns the configuration: views, zones, lines, areas, schedules, alert policies and the arm mode. The engine reads it every 5 s and posts events and observations back, so zone and rule edits apply without a restart. The routes are internal, need a shared token and are never served by the web entry point; the [analytics contract](../reference/analytics-contract.mdx) lists them.
+The API owns the configuration: views, zones, lines, areas, schedules, alert policies and the arm mode. The engine reads it every 5 s, so zone and rule edits apply without a restart, and publishes every event change and every view's observation on the event bus, where the event store worker stores them. The configuration route is internal, needs a shared token and is never served by the web entry point; the [analytics contract](../reference/analytics-contract.mdx) lists it with the subjects the engine publishes on.
 
 ## Events
 
