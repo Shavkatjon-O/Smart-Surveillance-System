@@ -1,2 +1,2 @@
 [tool.uv.workspace]
-members = ["services/api", "services/connector", "packages/camera-adapters"]
+members = ["services/api", "services/connector", "packages/camera-adapters", "packages/event-bus"]

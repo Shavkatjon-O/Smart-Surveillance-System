@@ -31,7 +31,7 @@ init writes the gitignored deploy/devkit/.env from deploy/devkit/.env.example wi
 | WebRTC | 127.0.0.1:18755 over TCP and UDP |
 | Fake Telegram API | http://127.0.0.1:18781 |
 
-The Android emulator reaches the same ports at 10.0.2.2, and go2rtc offers both addresses as WebRTC candidates. Postgres is only on the internal database network; tools join smart-surveillance-dev_database to reach it.
+The kit also runs the event bus, smart-surveillance-dev-nats, and its workers smart-surveillance-dev-event-store, smart-surveillance-dev-notifier and smart-surveillance-dev-metering, on the internal bus network without a host port, as deploy/README.md describes. The Android emulator reaches the same ports at 10.0.2.2, and go2rtc offers both addresses as WebRTC candidates. Postgres is only on the internal database network; tools join smart-surveillance-dev_database to reach it.
 
 ## Simulated site
 

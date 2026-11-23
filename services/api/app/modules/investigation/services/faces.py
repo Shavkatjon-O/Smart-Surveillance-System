@@ -1,6 +1,7 @@
 """Service for the face results of the analytics service, and the faces shown with face events."""
 
-from collections.abc import Callable, Iterable
+import inspect
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -86,15 +87,16 @@ class FaceResultService:
 
     Attributes:
         session: Database session the service works in.
-        publish: Announces a stored event on the event stream, if set.
+        publish: Announces a stored event on the live event stream and raises its alert, if set.
     """
 
-    def __init__(self, session: AsyncSession, publish: Callable[[str, dict], None] | None = None):
+    def __init__(self, session: AsyncSession, publish: Callable[[str, dict], Awaitable[None] | None] | None = None):
         """Bind the service to a session.
 
         Args:
             session: Database session the service works in.
-            publish: Announces a stored event on the event stream with its message type and data, if set.
+            publish: Announces a stored event with its message type and data, if set; it may be a coroutine
+                function.
         """
         self.session = session
         self.publish = publish
@@ -280,7 +282,9 @@ class FaceResultService:
         camera_name = await self.session.scalar(select(Camera.name).where(Camera.uuid == event.camera_uuid))
         faces = await face_summaries(self.session, [event])
         read = event_read(event, camera_name, datetime.now(UTC), faces.get(event.uuid))
-        self.publish("event", read.model_dump(mode="json"))
+        sent = self.publish("event", read.model_dump(mode="json"))
+        if inspect.isawaitable(sent):
+            await sent
 
     def store_sample(
         self,

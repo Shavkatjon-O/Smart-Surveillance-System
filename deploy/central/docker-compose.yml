@@ -11,6 +11,11 @@ services:
     secrets:
       - sss_db_password
 
+  nats:
+    extends:
+      file: ../server/docker-compose.yml
+      service: nats
+
   go2rtc:
     extends:
       file: ../server/docker-compose.yml
@@ -20,6 +25,36 @@ services:
     extends:
       file: ../server/docker-compose.yml
       service: backend
+    env_file: !override
+      - .env
+    secrets:
+      - sss_db_password
+      - sss_secret_key
+
+  event-store:
+    extends:
+      file: ../server/docker-compose.yml
+      service: event-store
+    env_file: !override
+      - .env
+    secrets:
+      - sss_db_password
+      - sss_secret_key
+
+  notifier:
+    extends:
+      file: ../server/docker-compose.yml
+      service: notifier
+    env_file: !override
+      - .env
+    secrets:
+      - sss_db_password
+      - sss_secret_key
+
+  metering:
+    extends:
+      file: ../server/docker-compose.yml
+      service: metering
     env_file: !override
       - .env
     secrets:
@@ -42,10 +77,13 @@ volumes:
   postgres:
   events:
   analytics-engines:
+  nats:
 
 networks:
   cams:
   database:
+    internal: true
+  bus:
     internal: true
 
 secrets:

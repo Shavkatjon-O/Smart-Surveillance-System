@@ -110,17 +110,19 @@ The first diagram shows who calls the API and what the API drives; the second sh
 | backend | smart-surveillance-system-backend:local | FastAPI: sign in, cameras, discovery, ONVIF control and events, analytics configuration, events, people, search, counts, floor plans, health and the go2rtc stream registry |
 | analytics | smart-surveillance-system-analytics:local | DeepStream 9.1: detection, tracking, rules, faces, appearance, pose, plates, tamper watch, the rolling recording buffer and event clips |
 | v380-ptz-1, v380-ptz-2 | smart-surveillance-system-v380-bridge:local | One bridge per V380 camera: V380 protocol in, RTSP on 8554 and ONVIF with PTZ, light and siren on 8080 out |
+| nats | nats:2.15.3-alpine | The event bus: NATS with JetStream, whose streams carry every event change, alert and usage record between the services |
+| event-store, notifier, metering | smart-surveillance-system-backend:local | Workers from the API image: the event store writes every event change to Postgres, the notifier sends alerts to Telegram and push with retries, and metering records usage |
 | web | smart-surveillance-system-web:local | nginx serving the Next.js static export and proxying the API and the video websocket |
 | connector | smart-surveillance-connector:local | Runs at a remote site from deploy/connector: pairing, LAN discovery, camera credentials and a go2rtc restream the server pulls |
 
-The analytics service reads its configuration from the backend every 5 s, so zone and rule changes apply without a restart, and posts events and observations back on internal routes that nginx never serves. Only web and go2rtc's RTSP and WebRTC ports publish ports: web on loopback and on SSS_LAN_BIND, RTSP on 8554 and WebRTC on 8555 on SSS_LAN_BIND only, so phones on the local Wi-Fi reach the app and live video while a VPN on the same computer does not. The apps exchange WebRTC offers and answers through the API, which checks the member's access to the camera first.
+The analytics service reads its configuration from the backend every 5 s, so zone and rule changes apply without a restart, and publishes its events and observations on the event bus; the event-store worker stores them, the notifier sends their alerts, and every API replica passes them to its live clients, as How it works describes. Only web and go2rtc's RTSP and WebRTC ports publish ports: web on loopback and on SSS_LAN_BIND, RTSP on 8554 and WebRTC on 8555 on SSS_LAN_BIND only, so phones on the local Wi-Fi reach the app and live video while a VPN on the same computer does not. The apps exchange WebRTC offers and answers through the API, which checks the member's access to the camera first.
 
 ## Requirements
 
 - Linux with Docker Engine, Docker Compose v2 and the NVIDIA Container Toolkit.
 - An NVIDIA GPU with NVDEC and NVENC and a driver that supports CUDA 13.2, which is 595.58 or newer; the analytics image is DeepStream 9.1 on CUDA 13.2 and TensorRT 10.16. The stack is built and measured on a GeForce RTX 5070 with 12 GB.
 - GPU memory: about 2.1 GB for the analytics with every feature on, and 0.2 to 0.3 GB for each H.264 transcode go2rtc runs while a browser watches.
-- RAM: the analytics container is capped at 6 GB and uses about 1.5 GB with four cameras; the other services together use under 1 GB.
+- RAM: the analytics container is capped at 6 GB and uses about 1.5 GB with four cameras; the other services together use under 1 GB, of which NATS takes about 10 MB and each worker about 75 MB.
 - CPU: go2rtc decodes the browser transcodes on the CPU, under half a core for four 5 MP cameras on the wall; the analytics uses about a quarter of a core.
 - Disk: about 30 GB for the images, most of it the DeepStream base image, 2.5 GB for the models, 0.5 GB for the TensorRT engines, and the events volume, which grows by a few GB a day of clips with several people about and is pruned by SSS_EVENTS_RETENTION_DAYS.
 
@@ -232,6 +234,7 @@ Every variable lives in deploy/server/.env, which mirrors deploy/server/.env.exa
 | SSS_TIMEZONE | UTC | Time zone of schedules, counts and area resets |
 | SSS_ANALYTICS_URL | http://analytics:8080 | Status endpoint of the analytics service |
 | SSS_ANALYTICS_TOKEN | none | Shared token of the backend's internal analytics routes and the analytics status endpoint |
+| SSS_NATS_URL | nats://nats:4222 | NATS server of the event bus, which the backend, the workers and the analytics service publish and consume on |
 | SSS_ANALYTICS_MODELS_DIR | ../../services/analytics/models | Host folder of the analytics models, mounted read-only; a relative path starts at deploy/server |
 | SSS_ANALYTICS_FACE_MODELS_DIR | ../../services/analytics/models/face | Host folder of the face models, mounted read-only; a relative path starts at deploy/server |
 | SSS_ANALYTICS_DETECTOR | rfdetr-medium | Shared detector |
@@ -299,6 +302,7 @@ The weights are never committed. The DeepStream base image is under the NVIDIA D
 - The Telegram webhook only accepts calls with SSS_TELEGRAM_WEBHOOK_SECRET, and chat links are single use and expire.
 - go2rtc asks RTSP clients for SSS_TV_RTSP_USERNAME and SSS_TV_RTSP_PASSWORD except on loopback, so its own ffmpeg transcodes need no credentials.
 - The analytics service publishes no port; its status endpoint and the backend's internal analytics routes need SSS_ANALYTICS_TOKEN as a bearer token.
+- NATS publishes no port and serves only the internal bus network, which only the backend, the workers and the analytics service join; it has no authentication yet, so nothing else may join that network.
 - The bridges serve RTSP and ONVIF without authentication and sound the siren through an unauthenticated API, so they stay on the internal network and never publish ports.
 
 ## How it works
@@ -310,6 +314,10 @@ The backend registers two go2rtc streams per enabled camera, main and sub, each 
 ### Events
 
 One ONVIF PullPoint subscription per enabled camera reads its event topics, long-polls PullMessages, renews before the subscription expires and reconnects with backoff; a camera that refuses PullMessages is polled by subscribing every 5 s. A bridged camera is subscribed on its own address and SSS_DEVICE_ONVIF_PORT. Start and stop messages within 5 s merge into one event, an open event closes after 10 minutes, and states a camera reports when a subscription starts never open an event, because their start is unknown. Event times use this computer's clock and keep the camera's own time beside it. GET /api/v1/events lists events with filters and paging, and /api/v1/events/stream pushes changes as server-sent events.
+
+### Event bus
+
+Every event change travels on NATS with JetStream as a CloudEvents envelope that carries the whole event. The ONVIF subscriber and the analytics service publish the changes; the event-store worker stores each one in Postgres by the event's id, so a change that arrives twice changes nothing, then sends the stored event to every backend replica, which passes it to its server-sent event clients, and raises the event's alert once. The notifier sends each alert to Telegram and to push, retrying a recipient that failed with a growing delay for about 80 minutes, and the metering worker records the notifications sent. A producer keeps up to 2000 changes in order while NATS is away and sends them when it returns, and a message a worker cannot handle after its retries is kept with the reason in a dead letter stream. packages/event-bus/README.md lists the subjects, streams and their limits.
 
 ### Health
 
@@ -339,6 +347,7 @@ The host needs no Node or Python; every tool runs in a container as your own use
 - Console: Next.js static export in apps/console, checked with pnpm lint, typecheck and build.
 - Connector: the site agent in services/connector and the camera adapters in packages/camera-adapters, both uv workspace members with their own tests.
 - API contract: packages/contracts/openapi.json, written by scripts/export-openapi.sh and checked by the API tests.
+- Event bus: packages/event-bus holds the envelope, subjects, streams, publisher and consumer runner over NATS JetStream, with an in-memory bus for tests; the JSON Schemas of the event types are in packages/contracts/events. Its JetStream tests run against a real NATS server when SSS_TEST_NATS_URL names one.
 - Diagrams: each diagram is a source in docs/diagrams, a Python file for the diagrams package with the real logos of the tools it shows or a Mermaid file for a sequence diagram, which scripts/render-diagrams.sh draws into the PNG card beside it, with Graphviz in a container or with headless Chrome; the card is committed and Markdown embeds it as an image. scripts/check-diagrams.sh, which CI runs, fails on a mermaid block in Markdown or MDX and on a source without its card.
 - Development kit: scripts/devkit.sh runs deploy/devkit, the whole stack as the compose project smart-surveillance-dev with a simulated site, a fake Telegram API and Mailpit, binding 127.0.0.1 only, and seeds a demo organisation; tools/devkit/README.md describes it.
 - Mobile app: Flutter in apps/mobile, checked with flutter analyze and flutter test; its API client is generated from packages/contracts/openapi.json.

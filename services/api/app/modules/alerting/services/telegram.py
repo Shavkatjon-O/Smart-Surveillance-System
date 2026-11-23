@@ -311,17 +311,21 @@ class TelegramBot:
             await asyncio.sleep(1)
         return None
 
-    async def notify(self, event: dict) -> int:
-        """Send an alert to every enabled chat of the event's organisation, when its plan includes Telegram alerts.
+    async def deliver(self, event: dict, done: set) -> tuple[int, int]:
+        """Send an alert to the enabled chats of the event's organisation, when its plan includes Telegram alerts.
+
+        Chats already in done are skipped, and every chat that received the alert joins it, so a retry reaches only
+        the chats that missed it.
 
         Args:
-            event: The event message.
+            event: The event in its API form.
+            done: Telegram chat ids that already received this alert; updated in place.
 
         Returns:
-            The number of chats that received it.
+            The chats that received it now and the chats that failed in a way a retry may cure.
         """
         if self.client is None:
-            return 0
+            return 0, 0
         async with async_session_maker() as session:
             row = (
                 await session.execute(
@@ -332,11 +336,11 @@ class TelegramBot:
                 )
             ).first()
             if row is None:
-                return 0
+                return 0, 0
             camera, site_id, organisation_id, site, zone = row
             granted = await entitlements_for(session, organisation_id)
             if not granted.allows(Feature.TELEGRAM_ALERTS) or granted.suspended:
-                return 0
+                return 0, 0
             chats = list(
                 await session.scalars(
                     select(TelegramChat).where(
@@ -347,8 +351,9 @@ class TelegramBot:
                     )
                 )
             )
+            chats = [chat for chat in chats if chat.chat_id not in done]
             if not chats:
-                return 0
+                return 0, 0
             started = event.get("started_at")
             at = datetime.fromisoformat(str(started)) if started else datetime.now(UTC)
             caption = alert_caption(
@@ -362,6 +367,7 @@ class TelegramBot:
             )
             picture = await self.snapshot(session, UUID(str(event["uuid"])))
             sent = 0
+            pending = 0
             for chat in chats:
                 try:
                     if picture:
@@ -369,13 +375,15 @@ class TelegramBot:
                     else:
                         await self.client.send_message(chat.chat_id, caption)
                     sent += 1
+                    done.add(chat.chat_id)
                 except TelegramError as exc:
                     logger.warning("Sending an alert to a Telegram chat failed: %s", exc)
                     if exc.gone:
                         chat.blocked_at = datetime.now(UTC)
-            await record_usage(session, organisation_id, site_id, UsageMetric.NOTIFICATIONS, sent)
+                    elif exc.transient:
+                        pending += 1
             await session.commit()
-            return sent
+            return sent, pending
 
 
 telegram_bot = TelegramBot()

@@ -145,8 +145,12 @@ scripts/download-secondary-models.sh
 docker compose -f deploy/server/docker-compose.yml up -d --build analytics
 ```
 
-Without SSS_ANALYTICS_BACKEND_URL the service reads the same configuration from the JSON file in
-SSS_ANALYTICS_CONFIG_FILE instead, for a host without the backend. The first start builds the TensorRT engine into
+The service polls its configuration from the backend over HTTP every 5 s and publishes every event change and every
+view's observation on the event bus at SSS_NATS_URL, on the subjects packages/event-bus/README.md lists, through a
+publisher that retries and keeps up to 2000 changes in order while the bus is away. Without SSS_NATS_URL it posts
+them to the backend's internal intake routes instead, which publish them on the bus. Face results, counts, journeys
+and follow moves stay HTTP requests to the backend. Without SSS_ANALYTICS_BACKEND_URL the service reads the same
+configuration from the JSON file in SSS_ANALYTICS_CONFIG_FILE instead, for a host without the backend. The first start builds the TensorRT engine into
 the engine volume, which takes about a minute.
 
 ## Configuration
@@ -157,7 +161,7 @@ they keep their defaults unless set:
 
 | Name | Default | Meaning |
 |---|---|---|
-| SSS_ANALYTICS_BACKEND_URL | empty | Backend the configuration comes from and events go to; compose sets it |
+| SSS_ANALYTICS_BACKEND_URL | empty | Backend the configuration comes from and faces, counts and journeys go to; compose sets it |
 | SSS_ANALYTICS_CONFIG_FILE | /config/analytics.json | JSON configuration read when no backend is set |
 | SSS_ANALYTICS_RTSP_URL | rtsp://go2rtc:8554 | go2rtc RTSP server the streams are read from |
 | SSS_ANALYTICS_ENGINE_BATCH | 8 | Largest batch the detector engine is built for |
@@ -176,14 +180,14 @@ they keep their defaults unless set:
 ## Status
 
 GET /status on port 8080, with the shared token as a bearer token, returns the pipeline state, per view frame rate, latency, objects, rule counts, tamper
-readings and errors, the recorders, the GPU reading, recent events and the face stage's models, gallery, counts and
-recent face results. GET /views/{view}/objects returns the tracked
+readings and errors, the recorders, the GPU reading, recent events, the bus publisher's counters and the face stage's
+models, gallery, counts and recent face results. GET /views/{view}/objects returns the tracked
 boxes of a view's latest frame, and GET /views/{view}/snapshot.jpg a fresh picture of the view, kept as a zone
 reference with reference=1.
 
 ## Tests
 
 ```
-docker build --target test -t smart-surveillance-system-analytics:test analytics
+docker build --target test --build-context event-bus=packages/event-bus -t smart-surveillance-system-analytics:test services/analytics
 docker run --rm smart-surveillance-system-analytics:test
 ```

@@ -15,6 +15,33 @@ x-hardening: &hardening
   cap_drop:
     - ALL
 
+x-backend-build: &backend-build
+  context: ../..
+  dockerfile: services/api/Dockerfile
+
+x-worker: &worker
+  <<: [*restart, *hardening]
+  build: *backend-build
+  image: smart-surveillance-system-backend:local
+  logging: *logging
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  mem_limit: 256m
+  env_file: .env
+  healthcheck:
+    test: ["CMD", "python", "-m", "app.workers", "health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+  depends_on:
+    backend:
+      condition: service_healthy
+    nats:
+      condition: service_healthy
+
 x-v380-bridge: &v380-bridge
   <<: [*restart, *hardening]
   build: ../../services/v380-bridge
@@ -81,6 +108,26 @@ services:
       retries: 20
     networks: [database]
 
+  nats:
+    <<: [*restart, *hardening]
+    image: nats:2.15.3-alpine
+    container_name: smart-surveillance-system-nats
+    logging: *logging
+    read_only: true
+    mem_limit: 256m
+    environment:
+      GOMEMLIMIT: 200MiB
+    command: ["--config", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+      - nats:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [bus]
+
   go2rtc:
     <<: [*restart, *hardening]
     image: alexxit/go2rtc:1.9.14-hardware
@@ -119,9 +166,7 @@ services:
 
   backend:
     <<: [*restart, *hardening]
-    build:
-      context: ../..
-      dockerfile: services/api/Dockerfile
+    build: *backend-build
     image: smart-surveillance-system-backend:local
     container_name: smart-surveillance-system-backend
     logging: *logging
@@ -143,13 +188,39 @@ services:
         condition: service_healthy
       go2rtc:
         condition: service_healthy
-    networks: [cams, database]
+      nats:
+        condition: service_healthy
+    networks: [cams, database, bus]
+
+  event-store:
+    <<: *worker
+    container_name: smart-surveillance-system-event-store
+    command: ["python", "-m", "app.workers", "event-store"]
+    networks: [database, bus]
+
+  notifier:
+    <<: *worker
+    container_name: smart-surveillance-system-notifier
+    command: ["python", "-m", "app.workers", "notifier"]
+    volumes:
+      - events:/data/events:ro
+    networks: [cams, database, bus]
+
+  metering:
+    <<: *worker
+    container_name: smart-surveillance-system-metering
+    command: ["python", "-m", "app.workers", "metering"]
+    volumes:
+      - events:/data/events:ro
+    networks: [database, bus]
 
   analytics:
     <<: [*restart, *hardening]
     build:
       context: ../../services/analytics
       target: runtime
+      additional_contexts:
+        event-bus: ../../packages/event-bus
     image: smart-surveillance-system-analytics:local
     container_name: smart-surveillance-system-analytics
     logging: *logging
@@ -157,6 +228,8 @@ services:
     env_file: .env
     environment:
       SSS_ANALYTICS_BACKEND_URL: http://backend:8000
+
+      SSS_NATS_URL: ${SSS_NATS_URL:-nats://nats:4222}
 
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
     deploy:
@@ -189,7 +262,9 @@ services:
         condition: service_healthy
       go2rtc:
         condition: service_healthy
-    networks: [cams, database]
+      nats:
+        condition: service_healthy
+    networks: [cams, database, bus]
 
   v380-ptz-1:
     <<: *v380-bridge
@@ -282,8 +357,11 @@ volumes:
   postgres:
   events:
   analytics-engines:
+  nats:
 
 networks:
   cams:
   database:
+    internal: true
+  bus:
     internal: true

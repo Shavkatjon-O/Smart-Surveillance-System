@@ -6,6 +6,11 @@ services:
       file: ../server/docker-compose.yml
       service: postgres
 
+  nats:
+    extends:
+      file: ../server/docker-compose.yml
+      service: nats
+
   go2rtc:
     extends:
       file: ../server/docker-compose.yml
@@ -23,6 +28,27 @@ services:
     env_file: !override
       - .env
 
+  event-store:
+    extends:
+      file: ../server/docker-compose.yml
+      service: event-store
+    env_file: !override
+      - .env
+
+  notifier:
+    extends:
+      file: ../server/docker-compose.yml
+      service: notifier
+    env_file: !override
+      - .env
+
+  metering:
+    extends:
+      file: ../server/docker-compose.yml
+      service: metering
+    env_file: !override
+      - .env
+
   analytics:
     extends:
       file: ../server/docker-compose.yml
@@ -32,6 +58,8 @@ services:
       - .env
     environment:
       SSS_ANALYTICS_BACKEND_URL: http://backend:8000
+
+      SSS_NATS_URL: ${SSS_NATS_URL:-nats://nats:4222}
 
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
@@ -89,8 +117,11 @@ volumes:
   postgres:
   events:
   analytics-engines:
+  nats:
 
 networks:
   cams:
   database:
+    internal: true
+  bus:
     internal: true

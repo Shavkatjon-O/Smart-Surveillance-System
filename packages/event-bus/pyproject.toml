@@ -1,0 +1,47 @@
+[project]
+name = "event-bus"
+version = "0.1.0"
+description = "Event bus of Smart Surveillance System: CloudEvents envelopes, subjects, streams, publisher and consumer runner over NATS JetStream"
+requires-python = ">=3.12"
+dependencies = [
+    "nats-py>=2.17,<3",
+]
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.23",
+    "pytest>=8.4",
+    "pytest-asyncio>=1.1",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "event_bus"
+module-root = ""
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["event_bus"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"**/tests/**" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

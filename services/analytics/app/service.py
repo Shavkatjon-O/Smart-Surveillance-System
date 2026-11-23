@@ -43,6 +43,7 @@ from app.rules.engine import Event, RulesEngine, Update
 from app.rules.model import ArmMode, Box, Detection, EventKind, Frame, ViewRules
 from app.scene import SceneMatcher
 from app.settings import Settings
+from app.sink import EventSink
 from app.sources import probe_size, redact, stream_uri
 from app.stages import engines
 from app.stages.models import PLATE_DETECTOR, PLATE_DICTIONARY, PLATE_DICTIONARY_SHA256, PLATE_READER, PLATE_TEXT
@@ -188,6 +189,7 @@ class Service:
         timezone: Time zone of schedules.
         backend: Client of the backend's internal routes, None when running from a file.
         outbox_backend: Queue of reports to the backend, None when running from a file.
+        sink: Where event changes and observations go: the event bus, or the backend's intake routes.
         source: Where the configuration comes from, the backend or a JSON file.
         scenes: Matcher of moving-lens pictures against zone reference pictures.
         identity: Face recognition settings.
@@ -247,6 +249,7 @@ class Service:
             self.source: FileConfigSource | BackendConfigSource = BackendConfigSource(self.backend)
         else:
             self.source = FileConfigSource(settings.config_file)
+        self.sink = EventSink(settings.nats_url, self.outbox_backend)
         self.scenes = SceneMatcher(settings.events_dir)
         self.identity = IdentitySettings()
         self.faces = FaceStage(
@@ -334,6 +337,7 @@ class Service:
         self.features.start()
         if self.outbox_backend is not None:
             self.outbox_backend.start()
+        self.sink.start()
         threading.Thread(target=self.media_loop, name="media", daemon=True).start()
         threading.Thread(target=self.read_loop, name="reader", daemon=True).start()
         polled = 0.0
@@ -830,8 +834,21 @@ class Service:
                 pending.deadline = min(pending.deadline, ended + self.settings.clip_after)
             self.publish(event)
 
+    def owner(self, view_id: str) -> tuple[str | None, str | None]:
+        """Return the organisation and site of a view, from the configuration the backend gave it.
+
+        Args:
+            view_id: The view.
+
+        Returns:
+            Organisation and site ids, None where the configuration names none.
+        """
+        runtime = self.views.get(view_id)
+        raw = runtime.config.raw if runtime is not None else {}
+        return raw.get("organisation"), raw.get("site")
+
     def publish(self, event: dict) -> None:
-        """Log an event change, keep it for the status endpoint and send it to the backend.
+        """Log an event change, keep it for the status endpoint and send it to the bus.
 
         Args:
             event: The event with its action.
@@ -844,8 +861,7 @@ class Service:
         self.media_events[event["id"]] = event
         while len(self.media_events) > MEDIA_EVENT_LIMIT:
             self.media_events.popitem(last=False)
-        if self.outbox_backend is not None:
-            self.outbox_backend.send("/internal/analytics/events", event)
+        self.sink.event(event, self.owner(str(event["view"])))
         self.recent.append(event)
         logger.info(
             "Event %s %s %s %s%s%s objects=%s alert=%s",
@@ -1121,12 +1137,12 @@ class Service:
                 path.unlink(missing_ok=True)
 
     def observe(self, now: float) -> None:
-        """Send the per view counts and states to the backend every few seconds.
+        """Send the per view counts and states to the bus every few seconds.
 
         Args:
             now: Current time.
         """
-        if self.outbox_backend is None or now - self.observed < OBSERVATION_SECONDS:
+        if not self.sink.active or now - self.observed < OBSERVATION_SECONDS:
             return
         self.observed = now
         status = self.status()
@@ -1137,7 +1153,7 @@ class Service:
             rules.pop("open", None)
             views.append({**view, "counts": rules})
         body = {"at": now, "pipeline": status["pipeline"], "gpu": status["gpu"], "views": views}
-        self.outbox_backend.send("/internal/analytics/observations", body, droppable=True)
+        self.sink.observations(body, self.owner)
 
     def publish_face(self, body: dict) -> None:
         """Send a face result to the backend.
@@ -1287,6 +1303,7 @@ class Service:
                     if self.outbox_backend
                     else None
                 ),
+                "bus": self.sink.status(),
                 "recent_events": list(self.recent)[-50:],
                 "faces": {
                     **self.faces.status(),

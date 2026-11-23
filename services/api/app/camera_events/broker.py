@@ -51,3 +51,10 @@ class EventBroker:
                 queue.put_nowait({"type": "overflow", "data": {}})
                 continue
             queue.put_nowait(message)
+
+    def reset(self) -> None:
+        """Empty every listener's queue and send it one overflow message, so the web app reconnects and reloads."""
+        for queue in list(self.queues):
+            while not queue.empty():
+                queue.get_nowait()
+            queue.put_nowait({"type": "overflow", "data": {}})

@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1_routers import v1_routers
+from app.bus.connection import bus
+from app.bus.relay import LiveRelay
 from app.camera_events.engine import camera_events
 from app.core.config import APP_NAME, APP_VERSION
 from app.core.database import async_engine, verify_db_connection
@@ -19,9 +21,9 @@ from app.core.exceptions import ServiceError, Unavailable
 from app.core.logging import setup_logging
 from app.core.security import require_secret_key
 from app.health.prober import health_prober
-from app.modules.alerting.services import PushDispatcher, telegram_bot
+from app.modules.alerting.services import telegram_bot
 from app.modules.analytics.routers import analytics_internal_router
-from app.modules.billing.services import sync_plans, usage_meter
+from app.modules.billing.services import sync_plans
 from app.modules.identity.services.seed import seed_admin
 from app.modules.investigation.routers import people_internal_router
 from app.modules.operations.services import audit_pruner
@@ -32,12 +34,15 @@ from app.streaming.supervisor import supervisor
 setup_logging()
 logger = logging.getLogger(__name__)
 
-push_dispatcher = PushDispatcher(camera_events.broker)
+live_relay = LiveRelay(camera_events.broker)
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Start the background engines after the database checks and stop them on shutdown.
+
+    The bus comes first, because the engines publish on it and the live relay fills this replica's event streams
+    from it; the workers do the rest of the event pipeline in their own containers.
 
     Args:
         application: The application.
@@ -50,22 +55,22 @@ async def lifespan(application: FastAPI):
     await seed_admin()
     await sync_plans()
     await run_bootstrap()
+    await bus.start()
+    await live_relay.start()
     await supervisor.start()
     await health_prober.start()
     await camera_events.start()
-    await push_dispatcher.start()
-    await usage_meter.start()
     await audit_pruner.start()
     await telegram_bot.start()
     logger.info("%s %s started", APP_NAME, APP_VERSION)
     yield
     await telegram_bot.stop()
     await audit_pruner.stop()
-    await usage_meter.stop()
-    await push_dispatcher.stop()
     await camera_events.stop()
     await health_prober.stop()
     await supervisor.stop()
+    await live_relay.stop()
+    await bus.stop()
     await async_engine.dispose()
 
 

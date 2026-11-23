@@ -11,6 +11,7 @@ COPY pyproject.toml uv.lock ./
 COPY services/api/pyproject.toml services/api/
 COPY services/connector/pyproject.toml services/connector/
 COPY packages/camera-adapters packages/camera-adapters
+COPY packages/event-bus packages/event-bus
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --package smart-surveillance-backend --no-install-project
 

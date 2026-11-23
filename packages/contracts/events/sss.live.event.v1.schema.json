@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.live.event.v1.schema.json",
+  "title": "Live event",
+  "description": "A stored event as the live event stream shows it, the EventRead of the API, sent on sss.<organisation>.<site>.live to every API replica, which passes it to its server-sent event clients as an event message.",
+  "type": "object",
+  "properties": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "camera",
+        "analytics"
+      ]
+    },
+    "source_topic": {
+      "type": "string"
+    },
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "alert": {
+      "type": "boolean"
+    },
+    "view_uuid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "ongoing": {
+      "type": "boolean"
+    },
+    "duration_seconds": {
+      "type": "number"
+    },
+    "camera_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "has_snapshot": {
+      "type": "boolean"
+    },
+    "has_thumbnail": {
+      "type": "boolean"
+    },
+    "has_clip": {
+      "type": "boolean"
+    },
+    "details": {
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "face": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "acknowledged_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "uuid",
+    "camera_uuid",
+    "kind",
+    "source",
+    "alert",
+    "started_at",
+    "ongoing"
+  ]
+}

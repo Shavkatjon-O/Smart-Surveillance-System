@@ -18,10 +18,12 @@ central, jetson and devkit take the server's service definitions and change only
 
 ## Self-hosted site
 
-<Status kind="live" /> One computer runs the whole site from deploy/server, as [self-hosting](./getting-started/self-hosting.mdx) describes. The data lives in three named volumes: postgres for the database, events for snapshots, clips and face crops, and analytics-engines for the TensorRT engines, which can always be rebuilt.
+<Status kind="live" /> One computer runs the whole site from deploy/server, as [self-hosting](./getting-started/self-hosting.mdx) describes. The data lives in four named volumes: postgres for the database, events for snapshots, clips and face crops, nats for the event bus's streams, and analytics-engines for the TensorRT engines, which can always be rebuilt.
+
+- Event bus: a nats service runs NATS with JetStream on the internal bus network, and three workers from the API image, event-store, notifier and metering, store the events, send the alerts and record usage. Each worker is its own container, so it restarts and scales on its own.
 
 - Secrets: SSS_SECRET_KEY signs sessions and encrypts camera passwords; SSS_ANALYTICS_TOKEN guards the internal analytics routes; SSS_TV_RTSP_PASSWORD guards go2rtc's RTSP port. Keep deploy/server/.env out of version control.
-- Network: only the web entry point and go2rtc's RTSP port publish ports, on the addresses in SSS_LAN_BIND and loopback. The V380 bridges and the analytics engine publish none.
+- Network: only the web entry point and go2rtc's RTSP port publish ports, on the addresses in SSS_LAN_BIND and loopback. The V380 bridges, the analytics engine, NATS and the workers publish none.
 - Retention: events, their clips and face samples follow SSS_EVENTS_RETENTION_DAYS, line counts SSS_COUNTS_RETENTION_DAYS, and health samples SSS_HEALTH_RETENTION_DAYS. Clips take a few GB a day with several people about, so size the disk or the retention for the site.
 
 ## Central deployment

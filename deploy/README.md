@@ -4,9 +4,9 @@ One folder per deployment target. Each folder holds one docker-compose.yml that 
 
 | Target | Compose project | Use |
 |---|---|---|
-| server | smart-surveillance-system | The all-in-one self-hosted site on one Linux computer with an NVIDIA GPU: API, console, go2rtc, analytics, Postgres and a bridge per V380 camera |
+| server | smart-surveillance-system | The all-in-one self-hosted site on one Linux computer with an NVIDIA GPU: API, console, go2rtc, analytics, Postgres, NATS with the event workers and a bridge per V380 camera |
 | central | smart-surveillance-system | The hosted multi-tenant platform: the server's services without V380 bridges, with the database password and the secret key as Docker secrets; sites join through connectors |
-| connector | smart-surveillance-connector | The agent a customer runs at a site, with host networking, to pair with the platform and reach the site's cameras |
+| connector | smart-surveillance-connector | The agent a customer runs at a site, with host networking, to pair with the platform and reach the site's cameras; it has no event bus yet |
 | jetson | smart-surveillance-system | A site on a Jetson Orin Nano: the server's services with RF-DETR Nano, software video encoding and no plate reading |
 | devkit | smart-surveillance-dev | The development kit: the server's services with simulated sites, a fake Telegram API and Mailpit, on 127.0.0.1 only |
 
@@ -46,11 +46,31 @@ central, jetson and devkit take the server's service definitions with extends fr
 
 - Every service a target extends sets env_file to the target's own .env, because the server's .env resolves to deploy/server/.env.
 - Compose interpolates the whole server file for every target that extends it, so a variable the server requires with :? is required in every target. The server requires only what every target needs, SSS_LAN_BIND and SSS_TV_RTSP_PASSWORD; the V380 camera variables default to empty and must be set on a site with V380 cameras.
-- A target declares the volumes and networks its services use, because extends takes services only.
+- A target declares the volumes and networks its services use, because extends takes services only; every target with the event bus declares the nats volume and the internal bus network.
 
 ## Central secrets
 
 SSS_SECRETS_DIR names a folder with the files sss_db_password and sss_secret_key. Postgres reads the first through POSTGRES_PASSWORD_FILE and the API reads both from /run/secrets. central/.env.example leaves out SSS_DB_PASSWORD and SSS_SECRET_KEY, because a variable set in the environment wins over its secret file.
+
+## Event bus
+
+Every target except the connector runs the event bus and its workers, defined once in server/docker-compose.yml:
+
+| Service | Container | Role |
+|---|---|---|
+| nats | smart-surveillance-system-nats | NATS 2.15.3 with JetStream, from nats:2.15.3-alpine under the Apache 2.0 licence, configured by server/nats/nats.conf and keeping its streams in the nats volume; capped at 256 MiB |
+| event-store | smart-surveillance-system-event-store | Stores every event change in Postgres and announces it to the API replicas |
+| notifier | smart-surveillance-system-notifier | Sends alerts to Telegram and push with retries; reads snapshots from the events volume |
+| metering | smart-surveillance-system-metering | Records usage from the bus and runs the hourly usage rollup |
+
+The workers run the backend image with python -m app.workers and their name, wait for the backend to be healthy, so the migrations have run, and report health from a heartbeat file the healthcheck reads with python -m app.workers health. A worker scales by running more containers of it, since every replica shares its durable consumers. NATS serves only the internal bus network, which the backend, the workers and the analytics service join, and publishes no port. server/nats/nats.conf caps JetStream at 64 MB of memory and 2 GB of disk, above the sum of the streams' limits in packages/event-bus/README.md. The devkit names its containers smart-surveillance-dev-nats and so on.
+
+Count the messages of each stream, or read the dead letters, from the server's folder:
+
+```
+docker compose exec event-store python -m event_bus streams
+docker run --rm --network smart-surveillance-system_bus natsio/nats-box:0.20.2 nats --server nats://nats:4222 stream view SSS_DEADLETTER
+```
 
 ## go2rtc
 

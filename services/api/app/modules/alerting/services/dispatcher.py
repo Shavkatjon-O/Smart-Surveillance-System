@@ -1,27 +1,35 @@
-"""Alert pushes: every new alert reaches the device sessions of the members who may see its site."""
+"""Alert dispatch: every alert from the bus reaches the organisation's Telegram chats and the members' devices.
 
-import asyncio
-import logging
-from collections import OrderedDict
+Each channel runs as its own consumer of the alert stream in the notifier worker, so a channel that fails retries
+alone and the other is never sent twice.
+"""
+
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.camera_events.broker import EventBroker
 from app.core.database import async_session_maker
 from app.models import AuthSession, Camera, Membership, MembershipSite, PushTarget, Site
 from app.modules.alerting.services.providers import providers
-from app.modules.alerting.services.targets import deliver
-from app.modules.alerting.services.telegram import telegram_bot
-from app.modules.billing.enums import UsageMetric
-from app.modules.billing.services.metering import record_usage
+from app.modules.alerting.services.targets import RETRY, SENT, deliver_each
+from app.modules.alerting.services.telegram import TelegramBot, telegram_bot
 
-__all__ = ["PushDispatcher", "alert_payload", "recipients"]
+__all__ = ["ChannelResult", "PushChannel", "TelegramChannel", "alert_payload", "recipients"]
 
-logger = logging.getLogger(__name__)
 
-REMEMBERED_EVENTS = 4096
+@dataclass(frozen=True)
+class ChannelResult:
+    """What one attempt to send an alert on a channel achieved.
+
+    Attributes:
+        sent: Recipients that received it on this attempt.
+        pending: Recipients that failed in a way a retry may cure.
+    """
+
+    sent: int = 0
+    pending: int = 0
 
 
 def alert_payload(event: dict, site_uuid: UUID) -> dict[str, str]:
@@ -73,92 +81,69 @@ async def recipients(session: AsyncSession, site_id: int, organisation_id: int) 
     )
 
 
-class PushDispatcher:
-    """Listens to the event broker and pushes each new alert once.
+class TelegramChannel:
+    """Sends alerts to the organisation's linked Telegram chats.
 
     Attributes:
-        broker: Broker the camera and analytics events are published on.
-        task: Task running the listener.
-        notified: Recently pushed event ids, oldest first.
+        name: Channel name, recorded with the usage it causes.
+        bot: The platform's bot.
     """
 
-    def __init__(self, broker: EventBroker):
-        """Create the dispatcher, not yet running.
+    name = "telegram"
+
+    def __init__(self, bot: TelegramBot = telegram_bot):
+        """Bind the channel to a bot.
 
         Args:
-            broker: The event broker.
+            bot: The bot.
         """
-        self.broker = broker
-        self.task: asyncio.Task | None = None
-        self.notified: OrderedDict[str, None] = OrderedDict()
+        self.bot = bot
 
-    async def start(self) -> None:
-        """Start listening unless already running."""
-        if self.task is None or self.task.done():
-            self.task = asyncio.create_task(self.run(), name="push-dispatcher")
-
-    async def stop(self) -> None:
-        """Stop listening."""
-        if self.task is not None:
-            self.task.cancel()
-            await asyncio.gather(self.task, return_exceptions=True)
-        self.task = None
-
-    def first_alert(self, message: dict) -> dict | None:
-        """Return the event of a message that is an alert not pushed yet.
+    async def send(self, event: dict, done: set) -> ChannelResult:
+        """Send one alert to the chats that have not received it.
 
         Args:
-            message: Broker message with type and data.
+            event: The event in its API form.
+            done: Chat ids that already received it; updated in place.
 
         Returns:
-            The event data, or None.
+            What the attempt achieved.
         """
-        if message.get("type") != "event":
-            return None
-        data = message.get("data") or {}
-        if not data.get("alert") or not data.get("uuid"):
-            return None
-        key = str(data["uuid"])
-        if key in self.notified:
-            return None
-        self.notified[key] = None
-        while len(self.notified) > REMEMBERED_EVENTS:
-            self.notified.popitem(last=False)
-        return data
+        sent, pending = await self.bot.deliver(event, done)
+        return ChannelResult(sent=sent, pending=pending)
 
-    async def run(self) -> None:
-        """Push alerts until cancelled, logging and surviving failures."""
-        with self.broker.subscribe() as queue:
-            while True:
-                message = await queue.get()
-                event = self.first_alert(message)
-                if event is None:
-                    continue
-                try:
-                    await self.notify(event)
-                except Exception:
-                    logger.exception("Pushing the alert of event %s failed", event.get("uuid"))
 
-    async def notify(self, event: dict) -> int:
-        """Push one alert to every member who may see its site.
+class PushChannel:
+    """Pushes alerts to the device sessions of the members who may see the event's site.
+
+    Attributes:
+        name: Channel name, recorded with the usage it causes.
+        available: Builds the push providers.
+    """
+
+    name = "push"
+
+    def __init__(self, available=providers):
+        """Bind the channel to the providers.
 
         Args:
-            event: The event data.
+            available: Returns the providers by name.
+        """
+        self.available = available
 
-        Telegram chats of the organisation receive the alert first, then the members' push targets.
+    async def send(self, event: dict, done: set) -> ChannelResult:
+        """Push one alert to the targets that have not received it.
+
+        Args:
+            event: The event in its API form.
+            done: Ids of the targets that already received it; updated in place.
 
         Returns:
-            The number of Telegram chats and push targets that accepted it.
+            What the attempt achieved.
         """
-        sent = 0
-        if telegram_bot.enabled:
-            try:
-                sent += await telegram_bot.notify(event)
-            except Exception:
-                logger.exception("Sending the Telegram alert of event %s failed", event.get("uuid"))
-        available = providers()
+        available: dict = self.available()
         if not any(provider.enabled for provider in available.values()):
-            return sent
+            return ChannelResult()
         async with async_session_maker() as session:
             row = (
                 await session.execute(
@@ -168,12 +153,19 @@ class PushDispatcher:
                 )
             ).first()
             if row is None:
-                return sent
+                return ChannelResult()
             site_id, organisation_id, site_uuid = row
-            targets = await recipients(session, site_id, organisation_id)
+            targets = [
+                target for target in await recipients(session, site_id, organisation_id) if target.id not in done
+            ]
             if not targets:
-                return sent
-            pushed = await deliver(targets, alert_payload(event, site_uuid), available)
-            await record_usage(session, organisation_id, site_id, UsageMetric.NOTIFICATIONS, pushed)
+                return ChannelResult()
+            outcomes = await deliver_each(targets, alert_payload(event, site_uuid), available)
             await session.commit()
-            return sent + pushed
+        for target, outcome in zip(targets, outcomes, strict=True):
+            if outcome == SENT:
+                done.add(target.id)
+        return ChannelResult(
+            sent=sum(1 for outcome in outcomes if outcome == SENT),
+            pending=sum(1 for outcome in outcomes if outcome == RETRY),
+        )

@@ -1,6 +1,6 @@
 # API
 
-The FastAPI platform API of Smart Surveillance System: the camera registry, live view signalling, PTZ and camera settings, events, analytics configuration, people, counts, alerting and administration. It serves /api/v1 to the console and the TV app, and /internal to the analytics service and the go2rtc TV composer only. The root README describes the product; docs/architecture.md describes the domain modules.
+The FastAPI platform API of Smart Surveillance System: the camera registry, live view signalling, PTZ and camera settings, events, analytics configuration, people, counts, alerting and administration. It serves /api/v1 to the console and the TV app, and /internal to the analytics service and the go2rtc TV composer only. The same image runs the workers of the event bus, event-store, notifier and metering, as python -m app.workers with the worker's name, each in its own container. The root README describes the product; docs/architecture.md describes the domain modules.
 
 ## Run
 
@@ -12,6 +12,18 @@ docker compose logs -f backend
 ```
 
 Write the OpenAPI document to packages/contracts/openapi.json with scripts/export-openapi.sh.
+
+The API publishes camera event changes and the changes engines post to the intake route on the event bus, and runs a live relay that fills its server-sent event streams from the bus. The workers do the rest of the event pipeline:
+
+| Worker | Consumes | Does |
+|---|---|---|
+| event-store | SSS_EVENTS | Stores every event change idempotently, announces the stored event and raises its alert once |
+| notifier | SSS_ALERTS | Sends each alert to Telegram and push, each channel with its own retries |
+| metering | SSS_USAGE | Adds counted usage to the hourly rollups and runs the hourly gauge rollup |
+
+```
+docker compose logs -f event-store notifier metering
+```
 
 Create a migration from this folder against a database already at head, and never edit it by hand:
 
@@ -45,4 +57,5 @@ Settings come from SSS_ environment variables and the .env file of the deploy ta
 | Push | SSS_FCM_PROJECT_ID, SSS_FCM_SERVICE_ACCOUNT_FILE, SSS_NTFY_URL, SSS_NTFY_TOKEN |
 | Retention | SSS_EVENTS_DIR, SSS_EVENTS_RETENTION_DAYS, SSS_COUNTS_RETENTION_DAYS, SSS_HEALTH_RETENTION_DAYS |
 | Analytics | SSS_ANALYTICS_URL, SSS_ANALYTICS_TOKEN |
+| Event bus | SSS_NATS_URL |
 | Cameras | SSS_DISCOVERY_SUBNET, SSS_MONITOR_INTERVAL_SECONDS, SSS_HEALTH_INTERVAL_SECONDS, SSS_REPLAY_ENABLED, SSS_TIMEZONE |
