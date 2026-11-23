@@ -1,14 +1,22 @@
-"""Engine that follows the events of every camera, stores them, takes snapshots and broadcasts changes."""
+"""Engine that follows the events of every camera, publishes their changes on the bus and takes snapshots.
+
+The engine never writes an event itself: every change goes onto the bus as a camera event change carrying the whole
+event, and the event store worker stores it. Source states go to the live fan-out of every API replica.
+"""
 
 import asyncio
 import logging
 import time
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, or_, select, update
 
+from app.bus.connection import BusConnection, bus
+from app.bus.messages import live_envelope
+from app.bus.owners import owners
 from app.camera_events.broker import EventBroker
 from app.camera_events.snapshots import SnapshotStore
 from app.camera_events.subscriber import CameraSubscriber, SourceStatus
@@ -18,17 +26,18 @@ from app.core.config import settings
 from app.core.database import async_session_maker
 from app.health.probe import tcp_probe
 from app.health.targets import camera_address
-from app.models import Camera, Event, Site
+from app.models import Camera, Event, Organisation, Site
 from app.modules.analytics.retention import purge_expired_counts, purge_expired_journeys
 from app.modules.billing.enums import Limit
 from app.modules.billing.services.entitlements import entitlements_for
-from app.modules.events.enums import EventKind, SourceState
-from app.modules.events.schemas import EventRead, EventSourceRead, event_read
+from app.modules.events.enums import EventKind, EventSource, SourceState
+from app.modules.events.schemas import CameraEventChange, EventInterrupted, EventSourceRead
 from app.modules.investigation.services.retention import purge_expired_samples
 from app.modules.tenancy.services.sites import effective_retention
 from app.onvif.endpoints import device_endpoint, endpoint_key
 from app.streaming.names import MAIN, SUB, stream_name
 from camera_adapters.onvif.notifications import Notification, parse_time
+from event_bus import Envelope, EventType, stable_id, subjects
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +50,9 @@ STORAGE_REPEAT = timedelta(hours=24)
 
 SNAPSHOT_KINDS = {EventKind.MOTION, EventKind.PERSON, EventKind.VEHICLE, EventKind.TAMPER}
 QUIET_KINDS = {EventKind.MOTION.value}
+
+SOURCE = "/sss/api/camera-events"
+REMEMBERED_EVENTS = 4096
 
 
 def source_read(status: SourceStatus) -> EventSourceRead:
@@ -90,15 +102,16 @@ def alive_check(host: str, port: int):
 
 
 class CameraEventsEngine:
-    """Run one event subscriber per enabled camera and turn their messages into stored events.
+    """Run one event subscriber per enabled camera and publish their messages as event changes on the bus.
 
     A background task reconciles subscribers with the camera list, closes finished events and prunes events, their
     face samples and the analytics appearances and journeys past the event retention, and line counts past theirs.
-    Every stored change is published to the broker.
+    Every change is published on the camera's event subject, and every source state on the site's live subject.
 
     Attributes:
         store: Snapshot storage.
-        broker: Broker that receives every change for live listeners.
+        broker: Broker of this replica's live event streams, which the live relay fills from the bus.
+        connection: The bus connection.
         retention: How long events, their face samples, appearances and journeys are kept.
         counts_retention: How long line counts are kept.
         tracker: Open events.
@@ -106,24 +119,35 @@ class CameraEventsEngine:
         statuses: Latest source status of each camera.
         names: Name of each camera.
         streams: go2rtc stream used for the snapshots of each camera.
-        lock: Serialises database writes of events.
+        owners: Organisation and site ids of each camera, as text.
+        changes: The latest change published for each recent event, so every change can carry the whole event.
+        lock: Serialises the prune's database writes.
         task: Background loop, if started.
         background: Snapshot tasks that are still running.
         reconciled_at: Monotonic time of the last reconciliation, if any.
         pruned_at: Monotonic time of the last prune, if any.
     """
 
-    def __init__(self, store: SnapshotStore, broker: EventBroker, retention_days: int, counts_retention_days: int):
+    def __init__(
+        self,
+        store: SnapshotStore,
+        broker: EventBroker,
+        retention_days: int,
+        counts_retention_days: int,
+        connection: BusConnection = bus,
+    ):
         """Create an engine that is not started yet.
 
         Args:
             store: Snapshot storage.
-            broker: Broker that receives every change.
+            broker: Broker of this replica's live event streams.
             retention_days: Number of days events, their face samples, appearances and journeys are kept.
             counts_retention_days: Number of days line counts are kept.
+            connection: The bus connection.
         """
         self.store = store
         self.broker = broker
+        self.connection = connection
         self.retention = timedelta(days=retention_days)
         self.counts_retention = timedelta(days=counts_retention_days)
 
@@ -132,6 +156,8 @@ class CameraEventsEngine:
         self.statuses: dict[UUID, SourceStatus] = {}
         self.names: dict[UUID, str] = {}
         self.streams: dict[UUID, str] = {}
+        self.owners: dict[UUID, tuple[str | None, str | None]] = {}
+        self.changes: OrderedDict[UUID, dict] = OrderedDict()
 
         self.lock = asyncio.Lock()
         self.task: asyncio.Task | None = None
@@ -203,8 +229,30 @@ class CameraEventsEngine:
         ordered = sorted(self.statuses.values(), key=lambda item: (item.position, item.camera_name))
         return [source_read(status) for status in ordered]
 
+    def later(self, coroutine) -> None:
+        """Run a coroutine in a background task that stop cancels.
+
+        Args:
+            coroutine: The coroutine.
+        """
+        task = asyncio.create_task(coroutine)
+        self.background.add(task)
+        task.add_done_callback(self.background.discard)
+
+    async def send_live(self, camera_uuid: UUID, kind: str, payload: dict) -> None:
+        """Send a message about a camera to the live fan-out of its site.
+
+        Args:
+            camera_uuid: Public id of the camera.
+            kind: Live stream message type.
+            payload: The message data.
+        """
+        organisation, site = self.owners.get(camera_uuid) or await owners.of_camera(camera_uuid)
+        envelope = live_envelope(kind, payload, organisation, site, SOURCE)
+        await self.connection.broadcast(subjects.live(organisation, site), envelope)
+
     def set_status(self, status: SourceStatus) -> None:
-        """Store a source status and publish it when it changed.
+        """Store a source status and send it to the live fan-out when it changed.
 
         Args:
             status: New source status.
@@ -212,7 +260,7 @@ class CameraEventsEngine:
         previous = self.statuses.get(status.camera_uuid)
         self.statuses[status.camera_uuid] = status
         if previous != status:
-            self.broker.publish("source", source_read(status).model_dump(mode="json"))
+            self.later(self.send_live(status.camera_uuid, "source", source_read(status).model_dump(mode="json")))
 
     def subscriber_status(self, status: SourceStatus) -> None:
         """Store a status reported by a subscriber, keeping the engine's camera name and position.
@@ -226,30 +274,53 @@ class CameraEventsEngine:
         self.set_status(status)
 
     async def recover(self) -> None:
-        """Close events that a previous run left open.
+        """Close events that a previous run left open, through the bus.
 
-        They end at the time of the restart limited to the open cap and are marked as interrupted.
+        They end at the time of the restart limited to the open cap and are marked as interrupted. Each close goes
+        on the event's own subject, behind any change of the event still on its way, and the event store applies it
+        only while the event is still open.
         """
         async with async_session_maker() as session:
             query = select(Event).where(Event.ended_at.is_(None), Event.deleted_at.is_(None))
             rows = list(await session.scalars(query))
             now = datetime.now(UTC)
             for row in rows:
-                row.ended_at = min(now, row.started_at + self.tracker.cap)
-                row.details = {**(row.details or {}), "interrupted": True}
-            await session.commit()
+                organisation, site = await owners.of_site(session, row.site_id)
+                if row.source == EventSource.ANALYTICS.value and row.view_uuid is not None:
+                    subject = subjects.analytics_event(organisation, site, row.view_uuid)
+                else:
+                    subject = subjects.camera_event(organisation, site, row.camera_uuid)
+                data = EventInterrupted(id=row.uuid, ended_at=min(now, row.started_at + self.tracker.cap))
+                envelope = Envelope.create(
+                    EventType.EVENT_INTERRUPTED,
+                    SOURCE,
+                    data.model_dump(mode="json"),
+                    subject=row.uuid,
+                    organisation=organisation,
+                    site=site,
+                )
+                await self.connection.emit(subject, envelope)
         if rows:
-            logger.info("Closed %d events left open by the previous run", len(rows))
+            logger.info("Closing %d events left open by the previous run", len(rows))
 
     async def load(self) -> list[Camera]:
-        """Load the cameras that are not soft-deleted.
+        """Load the cameras that are not soft-deleted, remembering their organisation and site ids.
 
         Returns:
             The cameras.
         """
         async with async_session_maker() as session:
-            rows = await session.scalars(select(Camera).where(Camera.deleted_at.is_(None)))
-            return list(rows)
+            rows = (
+                await session.execute(
+                    select(Camera, Organisation.uuid, Site.uuid)
+                    .outerjoin(Site, Site.id == Camera.site_id)
+                    .outerjoin(Organisation, Organisation.id == Camera.organisation_id)
+                    .where(Camera.deleted_at.is_(None))
+                )
+            ).all()
+        for camera, organisation, site in rows:
+            self.owners[camera.uuid] = (str(organisation) if organisation else None, str(site) if site else None)
+        return [camera for camera, _, _ in rows]
 
     async def reconcile(self) -> None:
         """Bring subscribers and cached names and streams in line with the cameras and forget removed cameras."""
@@ -315,7 +386,8 @@ class CameraEventsEngine:
         self.statuses.pop(camera_uuid, None)
         self.names.pop(camera_uuid, None)
         self.streams.pop(camera_uuid, None)
-        self.broker.publish("source_removed", {"camera_uuid": str(camera_uuid)})
+        await self.send_live(camera_uuid, "source_removed", {"camera_uuid": str(camera_uuid)})
+        self.owners.pop(camera_uuid, None)
 
     async def handle(
         self, camera_uuid: UUID, messages: list[Notification], camera_now: datetime | None, polled: bool
@@ -396,51 +468,107 @@ class CameraEventsEngine:
         result.update(extra)
         return result
 
-    async def insert(self, row: Event) -> EventRead:
-        """Store a new event and publish it.
+    async def publish(self, change: dict) -> None:
+        """Publish an event change carrying the whole event, and remember it for the event's later changes.
 
         Args:
-            row: Event to store.
+            change: The change, in the fields of CameraEventChange.
+        """
+        data = CameraEventChange.model_validate(change).model_dump(mode="json")
+        event_uuid = UUID(str(change["id"]))
+        self.changes[event_uuid] = change
+        self.changes.move_to_end(event_uuid)
+        while len(self.changes) > REMEMBERED_EVENTS:
+            self.changes.popitem(last=False)
+        camera_uuid = UUID(str(change["camera"]))
+        organisation, site = self.owners.get(camera_uuid) or await owners.of_camera(camera_uuid)
+        envelope = Envelope.create(
+            EventType.CAMERA_EVENT, SOURCE, data, subject=event_uuid, organisation=organisation, site=site
+        )
+        await self.connection.emit(subjects.camera_event(organisation, site, camera_uuid), envelope)
+
+    def change(
+        self,
+        event_uuid: UUID,
+        action: str,
+        camera_uuid: UUID,
+        kind: str,
+        topic: str,
+        started_at: datetime,
+        ended_at: datetime | None,
+        message: Notification,
+        details: dict,
+        camera_time: datetime | None = None,
+    ) -> dict:
+        """Describe a new event as its first change.
+
+        Args:
+            event_uuid: Public id of the event.
+            action: open or instant.
+            camera_uuid: Public id of the camera.
+            kind: Kind of the event.
+            topic: ONVIF topic that caused it.
+            started_at: Its start.
+            ended_at: Its end, None while open.
+            message: Notification that caused it.
+            details: Details to store with it.
+            camera_time: The camera's own time of the event; the message's time when omitted.
 
         Returns:
-            The stored event in its API form.
+            The change.
         """
-        row.alert = row.kind not in QUIET_KINDS
-        async with self.lock:
-            async with async_session_maker() as session:
-                session.add(row)
-                await session.commit()
-                await session.refresh(row)
-        read = event_read(row, self.names.get(row.camera_uuid), datetime.now(UTC))
-        self.broker.publish("event", read.model_dump(mode="json"))
-        return read
+        return {
+            "id": event_uuid,
+            "action": action,
+            "camera": camera_uuid,
+            "kind": kind,
+            "source_topic": topic,
+            "alert": kind not in QUIET_KINDS,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "camera_time": camera_time or message.utc_time,
+            "details": details,
+            "snapshot_path": None,
+            "thumbnail_path": None,
+        }
 
     async def create_open(self, opened: OpenEvent, message: Notification, offset: float | None) -> None:
-        """Store a newly opened event and schedule its snapshot.
+        """Publish a newly opened event and schedule its snapshot.
 
         Args:
             opened: Event the tracker opened.
             message: Notification that opened it.
             offset: Seconds the camera clock is ahead of this computer's, or None when unknown.
         """
-        row = Event(
-            uuid=opened.uuid,
-            camera_uuid=opened.camera_uuid,
-            kind=opened.kind,
-            source_topic=opened.topic,
-            started_at=opened.started_at,
-            ended_at=None,
-            camera_time=message.utc_time,
-            details=self.details(message, offset),
+        await self.publish(
+            self.change(
+                opened.uuid,
+                "open",
+                opened.camera_uuid,
+                opened.kind,
+                opened.topic,
+                opened.started_at,
+                None,
+                message,
+                self.details(message, offset),
+            )
         )
-        await self.insert(row)
         logger.info("Camera %s %s started", self.names.get(opened.camera_uuid), opened.kind)
         self.snapshot_later(opened.uuid, opened.camera_uuid, opened.started_at)
 
     async def instant(
-        self, camera_uuid: UUID, kind: EventKind, message: Notification, offset: float | None, now: datetime
+        self,
+        camera_uuid: UUID,
+        kind: EventKind,
+        message: Notification,
+        offset: float | None,
+        now: datetime,
+        event_uuid: UUID | None = None,
+        started_at: datetime | None = None,
+        details: dict | None = None,
+        camera_time: datetime | None = None,
     ) -> None:
-        """Store an event that starts and ends at the same moment.
+        """Publish an event that starts and ends at the same moment.
 
         A snapshot is scheduled for the kinds that have one.
 
@@ -450,19 +578,29 @@ class CameraEventsEngine:
             message: Notification that caused it.
             offset: Seconds the camera clock is ahead of this computer's, or None when unknown.
             now: Current time.
+            event_uuid: Public id of the event; a new one when omitted.
+            started_at: Its time; now when omitted.
+            details: Details to store; the message summary when omitted.
+            camera_time: The camera's own time of the event; the message's time when omitted.
         """
-        row = Event(
-            camera_uuid=camera_uuid,
-            kind=kind.value,
-            source_topic=message.topic,
-            started_at=now,
-            ended_at=now,
-            camera_time=message.utc_time,
-            details=self.details(message, offset),
+        event_uuid = event_uuid or uuid4()
+        at = started_at or now
+        await self.publish(
+            self.change(
+                event_uuid,
+                "instant",
+                camera_uuid,
+                kind.value,
+                message.topic,
+                at,
+                at,
+                message,
+                details if details is not None else self.details(message, offset),
+                camera_time,
+            )
         )
-        read = await self.insert(row)
         if kind in SNAPSHOT_KINDS:
-            self.snapshot_later(read.uuid, camera_uuid, now)
+            self.snapshot_later(event_uuid, camera_uuid, now)
 
     async def storage(
         self, camera_uuid: UUID, message: Notification, offset: float | None, now: datetime, initialized: bool
@@ -525,42 +663,47 @@ class CameraEventsEngine:
             )
         if known is not None:
             return
-        row = Event(
-            camera_uuid=camera_uuid,
-            kind=EventKind.REBOOT.value,
-            source_topic=message.topic,
+        await self.instant(
+            camera_uuid,
+            EventKind.REBOOT,
+            message,
+            offset,
+            now,
+            event_uuid=UUID(stable_id("reboot", camera_uuid, reported.isoformat())),
             started_at=started,
-            ended_at=started,
-            camera_time=reported,
             details=self.details(message, offset, reported_at=reported.isoformat()),
+            camera_time=reported,
         )
-        await self.insert(row)
 
     async def close_due(self) -> None:
         """Close the open events that have stopped or reached the cap."""
         await self.close(self.tracker.due(datetime.now(UTC)))
 
     async def close(self, closings: list[Closing]) -> None:
-        """Record the end of events and publish them.
+        """Publish the end of events.
 
         Args:
             closings: Events to close with their end times.
         """
         for closing in closings:
-            async with self.lock:
-                async with async_session_maker() as session:
-                    row = await session.scalar(select(Event).where(Event.uuid == closing.event.uuid))
-                    if row is None:
-                        continue
-                    row.ended_at = closing.ended_at
-                    extra = {"topics": sorted(closing.event.seen | {closing.event.topic})}
-                    if closing.capped:
-                        extra["capped"] = True
-                    row.details = {**(row.details or {}), **extra}
-                    await session.commit()
-                    await session.refresh(row)
-            read = event_read(row, self.names.get(row.camera_uuid), datetime.now(UTC))
-            self.broker.publish("event", read.model_dump(mode="json"))
+            event = closing.event
+            previous = self.changes.get(event.uuid)
+            if previous is None:
+                logger.warning("Closing camera event %s without its first change", event.uuid)
+                previous = {
+                    "id": event.uuid,
+                    "camera": event.camera_uuid,
+                    "kind": event.kind,
+                    "source_topic": event.topic,
+                    "alert": event.kind not in QUIET_KINDS,
+                    "started_at": event.started_at,
+                    "details": {},
+                }
+            extra = {"topics": sorted(event.seen | {event.topic})}
+            if closing.capped:
+                extra["capped"] = True
+            details = {**(previous.get("details") or {}), **extra}
+            await self.publish({**previous, "action": "close", "ended_at": closing.ended_at, "details": details})
 
     def snapshot_later(self, event_uuid: UUID, camera_uuid: UUID, at: datetime) -> None:
         """Take a snapshot of an event in a background task.
@@ -570,14 +713,10 @@ class CameraEventsEngine:
             camera_uuid: Public id of the camera.
             at: Time of the event.
         """
-        task = asyncio.create_task(self.snapshot(event_uuid, camera_uuid, at))
-        self.background.add(task)
-        task.add_done_callback(self.background.discard)
+        self.later(self.snapshot(event_uuid, camera_uuid, at))
 
     async def snapshot(self, event_uuid: UUID, camera_uuid: UUID, at: datetime) -> None:
-        """Capture a snapshot of an event and attach it to the stored event.
-
-        The files are removed again when the event no longer exists.
+        """Capture a snapshot of an event and publish it as a change of the event.
 
         Args:
             event_uuid: Public id of the event.
@@ -590,18 +729,14 @@ class CameraEventsEngine:
         snapshot_path, thumbnail_path = await self.store.capture(stream, event_uuid, at)
         if not snapshot_path and not thumbnail_path:
             return
-        async with self.lock:
-            async with async_session_maker() as session:
-                row = await session.scalar(select(Event).where(Event.uuid == event_uuid))
-                if row is None:
-                    await self.store.remove([path for path in (snapshot_path, thumbnail_path) if path])
-                    return
-                row.snapshot_path = snapshot_path
-                row.thumbnail_path = thumbnail_path
-                await session.commit()
-                await session.refresh(row)
-        read = event_read(row, self.names.get(row.camera_uuid), datetime.now(UTC))
-        self.broker.publish("event", read.model_dump(mode="json"))
+        previous = self.changes.get(event_uuid)
+        if previous is None:
+            logger.warning("Dropping the snapshot of camera event %s, whose changes are forgotten", event_uuid)
+            await self.store.remove([path for path in (snapshot_path, thumbnail_path) if path])
+            return
+        await self.publish(
+            {**previous, "action": "snapshot", "snapshot_path": snapshot_path, "thumbnail_path": thumbnail_path}
+        )
 
     async def cutoffs(self, session, now: datetime) -> tuple[dict[int, datetime], dict[int, datetime]]:
         """Work out how far back each site keeps its events and its clips.

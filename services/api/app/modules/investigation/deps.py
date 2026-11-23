@@ -6,7 +6,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.camera_events.engine import camera_events
+from app.bus.messages import announce_event
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.exceptions import Unauthorized
@@ -129,7 +129,7 @@ def get_sample_service(
 
 
 def get_face_result_service(session: AsyncSession = Depends(get_db)) -> FaceResultService:
-    """Build the face result service for the analytics service, announcing its events on the event stream.
+    """Build the face result service for the analytics service, announcing its events on the bus.
 
     Args:
         session: Database session for the request.
@@ -137,7 +137,7 @@ def get_face_result_service(session: AsyncSession = Depends(get_db)) -> FaceResu
     Returns:
         Face result service.
     """
-    return FaceResultService(session, camera_events.broker.publish)
+    return FaceResultService(session, announce_event)
 
 
 def get_gallery_service(session: AsyncSession = Depends(get_db)) -> GalleryService:

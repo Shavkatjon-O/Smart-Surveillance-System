@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.alert.v1.schema.json",
+  "title": "Alert",
+  "description": "An event that alerts, published once per event on sss.<organisation>.alert with the message id derived from the event id, so the stream keeps one alert per event. The data is the stored event as the API returns it; the notifier channels send it to Telegram chats and push targets.",
+  "type": "object",
+  "properties": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "type": "string"
+    },
+    "source": {
+      "enum": [
+        "camera",
+        "analytics"
+      ]
+    },
+    "source_topic": {
+      "type": "string"
+    },
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "alert": {
+      "type": "boolean"
+    },
+    "view_uuid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "ongoing": {
+      "type": "boolean"
+    },
+    "duration_seconds": {
+      "type": "number"
+    },
+    "camera_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "has_snapshot": {
+      "type": "boolean"
+    },
+    "has_thumbnail": {
+      "type": "boolean"
+    },
+    "has_clip": {
+      "type": "boolean"
+    },
+    "details": {
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "face": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "acknowledged_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "uuid",
+    "camera_uuid",
+    "kind",
+    "source",
+    "alert",
+    "started_at",
+    "ongoing"
+  ]
+}

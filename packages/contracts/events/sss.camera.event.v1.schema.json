@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.camera.event.v1.schema.json",
+  "title": "Camera event change",
+  "description": "A change of an event a camera reported over ONVIF, published on sss.<organisation>.<site>.camera.<camera>.event. Every change carries the whole event, so the event store creates the event from whichever change arrives first.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Event id, shared by every change of the event"
+    },
+    "action": {
+      "enum": [
+        "open",
+        "instant",
+        "close",
+        "snapshot"
+      ],
+      "description": "What changed"
+    },
+    "camera": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Camera id"
+    },
+    "kind": {
+      "type": "string",
+      "maxLength": 20,
+      "description": "Event kind, such as motion or tamper"
+    },
+    "source_topic": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "ONVIF topic that caused the event"
+    },
+    "alert": {
+      "type": "boolean",
+      "description": "Whether the event alerts; it only ever turns on"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start by the server's clock"
+    },
+    "ended_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "End, null while open"
+    },
+    "camera_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "The camera's own time of the event"
+    },
+    "details": {
+      "type": "object",
+      "description": "The ONVIF messages and the camera's clock offset; merged into what is stored"
+    },
+    "snapshot_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 255,
+      "description": "Snapshot relative to the events folder"
+    },
+    "thumbnail_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 255,
+      "description": "Thumbnail relative to the events folder"
+    }
+  },
+  "required": [
+    "id",
+    "action",
+    "camera",
+    "kind",
+    "source_topic",
+    "started_at"
+  ]
+}

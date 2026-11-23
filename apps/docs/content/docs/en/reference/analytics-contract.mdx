@@ -1,10 +1,21 @@
 ---
 title: Analytics contract
-description: The internal routes the analytics engine uses to read its configuration and post events, observations, counts, journeys and faces.
+description: The event bus subjects the analytics engine publishes events and observations on, and the internal routes it uses for its configuration, counts, journeys and faces.
 icon: Workflow
 ---
 
-The analytics engine and the API talk over internal routes under /internal. The engine polls its configuration every 5 s and posts every change of an event, the media paths once they are cut, observations per view, minute counts, finished appearances and journeys, and face decisions. Every internal route needs SSS_ANALYTICS_TOKEN as a bearer token; the web entry point answers 404 for /internal, and the engine publishes no port.
+The analytics engine publishes every change of an event, including the media paths once they are cut, and the observation of every view on the event bus at SSS_NATS_URL, and talks to the API over internal routes under /internal for the rest: it polls its configuration every 5 s and posts minute counts, finished appearances and journeys, and face decisions. Every internal route needs SSS_ANALYTICS_TOKEN as a bearer token; the web entry point answers 404 for /internal, and the engine publishes no port.
+
+## Event bus
+
+Every message is a CloudEvents 1.0 JSON envelope whose id is the message's UUID and idempotency key, with the organisation and site of the view as extension attributes. The JSON Schemas of the envelope and of each type are in packages/contracts/events, and packages/event-bus/README.md describes the streams, the consumers and the delivery guarantees.
+
+| Subject | Type | Carries |
+|---|---|---|
+| sss.organisation.site.analytics.view.event | sss.analytics.event.v1 | Every change of an event, carrying the whole event: open, update, close, instant and media |
+| sss.organisation.site.analytics.view.observation | sss.analytics.observation.v1 | The latest state, rates, counts and tamper reading of one view, every 5 s |
+
+An engine that cannot reach the bus, such as a later edge engine at a site, posts the same changes and observation reports to POST /internal/analytics/events and POST /internal/analytics/observations instead, and the API publishes them on these subjects, so the event store reads one pipeline whichever way an engine reports.
 
 Without a backend, the engine reads the same configuration from the JSON file in SSS_ANALYTICS_CONFIG_FILE, for a host that runs only the engine.
 

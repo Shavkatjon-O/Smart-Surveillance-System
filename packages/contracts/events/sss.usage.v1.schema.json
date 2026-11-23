@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.usage.v1.schema.json",
+  "title": "Usage",
+  "description": "Counted usage, published on sss.<organisation>.usage and added by metering to the hourly rollup of its site.",
+  "type": "object",
+  "properties": {
+    "metric": {
+      "enum": [
+        "notifications"
+      ],
+      "description": "Counted metric"
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0,
+      "description": "How much to add"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When it happened"
+    },
+    "channel": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Where it happened, such as telegram or push"
+    }
+  },
+  "required": [
+    "metric",
+    "amount",
+    "at"
+  ]
+}

@@ -76,6 +76,7 @@ class Settings(BaseSettings):
         timezone: Time zone of schedules, line counts and area resets.
         analytics_url: Address of the analytics service, for its status, live objects, view pictures and face embedding.
         analytics_token: Shared token of the analytics service and the internal analytics endpoints.
+        nats_url: NATS server of the event bus, or a comma-separated list of servers.
         device_username: Device login of bridged V380 cameras.
         device_password: Device password of bridged V380 cameras.
         device_onvif_port: ONVIF port of bridged V380 cameras on their own address.
@@ -174,6 +175,8 @@ class Settings(BaseSettings):
 
     analytics_url: str = "http://analytics:8080"
     analytics_token: str = ""
+
+    nats_url: str = "nats://nats:4222"
 
     device_username: str = Field(default="admin", validation_alias=AliasChoices("sss_device_username", "v380_username"))
     device_password: str = Field(default="", validation_alias=AliasChoices("sss_device_password", "v380_password"))

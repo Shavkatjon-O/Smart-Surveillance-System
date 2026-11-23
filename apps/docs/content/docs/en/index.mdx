@@ -19,7 +19,8 @@ It runs today as a self-hosted installation on one computer in a site's own netw
 ![Platform overview](/diagrams/platform-overview.png)
 
 - go2rtc pulls each camera once and serves the original stream to the analytics engine and a browser-friendly H.264 stream to the console.
-- The analytics engine reads its configuration from the API every 5 s and posts events back, so zone and rule changes apply without a restart.
+- The analytics engine reads its configuration from the API every 5 s, so zone and rule changes apply without a restart, and publishes its events on the event bus, NATS with JetStream.
+- Workers beside the API store every event, send the alerts and record usage, and every API replica passes the stored events to its live clients.
 - The console and the mobile app talk only to the API; the TV app talks to the cameras itself on the local Wi-Fi.
 
 ## Where to go next

@@ -9,6 +9,7 @@ dependencies = [
     "asyncpg>=0.30",
     "bcrypt>=4.3",
     "cryptography>=45.0",
+    "event-bus",
     "fastapi>=0.120",
     "httpx>=0.28",
     "numpy>=2.3",
@@ -33,6 +34,7 @@ package = false
 
 [tool.uv.sources]
 camera-adapters = { workspace = true }
+event-bus = { workspace = true }
 
 [tool.ruff]
 line-length = 120
@@ -46,7 +48,7 @@ select = ["E", "F", "I", "D"]
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "camera_adapters", "tests"]
+known-first-party = ["app", "camera_adapters", "event_bus", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
@@ -60,7 +62,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.importlinter]
-root_packages = ["app", "camera_adapters"]
+root_packages = ["app", "camera_adapters", "event_bus"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -72,14 +74,26 @@ forbidden_modules = ["app.modules", "app.api", "app.main"]
 [[tool.importlinter.contracts]]
 name = "nothing in the product imports the development kit"
 type = "forbidden"
-source_modules = ["app.core", "app.auth", "app.api", "app.main", "app.modules", "app.streaming", "app.analytics", "app.health", "app.onvif"]
+source_modules = ["app.core", "app.auth", "app.api", "app.main", "app.modules", "app.streaming", "app.analytics", "app.health", "app.onvif", "app.bus", "app.workers"]
 forbidden_modules = ["app.devkit"]
 
 [[tool.importlinter.contracts]]
 name = "packages import nothing from services or apps"
 type = "forbidden"
-source_modules = ["camera_adapters"]
+source_modules = ["camera_adapters", "event_bus"]
 forbidden_modules = ["app"]
+
+[[tool.importlinter.contracts]]
+name = "the event bus depends on nothing but its NATS client"
+type = "forbidden"
+source_modules = ["event_bus"]
+forbidden_modules = ["camera_adapters", "fastapi", "sqlalchemy", "pydantic", "httpx", "asyncpg"]
+
+[[tool.importlinter.contracts]]
+name = "nothing in the product imports the workers"
+type = "forbidden"
+source_modules = ["app.core", "app.auth", "app.api", "app.main", "app.modules", "app.streaming", "app.analytics", "app.health", "app.onvif", "app.bus"]
+forbidden_modules = ["app.workers"]
 
 [[tool.importlinter.contracts]]
 name = "routers leave the database to services"

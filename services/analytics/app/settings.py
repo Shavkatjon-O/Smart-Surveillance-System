@@ -32,6 +32,8 @@ class Settings:
         config_file: JSON configuration file used when no backend is set.
         backend_url: Backend base URL for configuration and events, empty to run from the file.
         backend_token: Shared token for the backend's internal analytics endpoints.
+        nats_url: NATS server of the event bus that event changes and observations are published on; empty posts
+            them to the backend's intake routes instead.
         models_dir: Mount point of the model folder; SSS_ANALYTICS_MODELS_DIR names the host folder compose mounts
             there.
         engines_dir: Writable engine cache.
@@ -65,6 +67,8 @@ class Settings:
     config_file: Path = field(default_factory=lambda: Path(env("SSS_ANALYTICS_CONFIG_FILE", "/config/analytics.json")))
     backend_url: str = field(default_factory=lambda: env("SSS_ANALYTICS_BACKEND_URL").rstrip("/"))
     backend_token: str = field(default_factory=lambda: env("SSS_ANALYTICS_TOKEN"))
+
+    nats_url: str = field(default_factory=lambda: env("SSS_NATS_URL"))
 
     models_dir: Path = Path("/models")
     engines_dir: Path = field(default_factory=lambda: Path(env("SSS_ANALYTICS_ENGINES_DIR", "/engines")))

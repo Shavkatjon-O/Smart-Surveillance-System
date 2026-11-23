@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.analytics.event.v1.schema.json",
+  "title": "Analytics event change",
+  "description": "A change of an event the analytics engine detected, published on sss.<organisation>.<site>.analytics.<view>.event. Every change carries the whole event, so a lost change is repaired by the next one; the alert flag only ever turns on.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Event id, shared by every change of the event"
+    },
+    "action": {
+      "type": "string",
+      "maxLength": 10,
+      "description": "open, update, close, instant or media"
+    },
+    "camera": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Camera id"
+    },
+    "view": {
+      "type": "string",
+      "format": "uuid",
+      "description": "View id"
+    },
+    "view_name": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "profile": {
+      "type": "string",
+      "maxLength": 20
+    },
+    "kind": {
+      "type": "string",
+      "maxLength": 20,
+      "description": "Event kind"
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 20,
+      "description": "Object label or tamper condition"
+    },
+    "started_at": {
+      "type": "number",
+      "description": "Start, seconds since the epoch"
+    },
+    "ended_at": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "End, null while open"
+    },
+    "zone": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64
+    },
+    "zone_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 60
+    },
+    "line": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64
+    },
+    "line_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 60
+    },
+    "direction": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 5
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 200
+    },
+    "boxes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 20
+    },
+    "count": {
+      "type": "integer"
+    },
+    "alert": {
+      "type": "boolean"
+    },
+    "plates": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object"
+      },
+      "maxItems": 5
+    },
+    "plate_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 20
+    },
+    "snapshot_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 255,
+      "pattern": "^analytics/\\d{4}/\\d{2}/\\d{2}/[0-9a-f-]{36}(\\.thumb)?\\.(jpg|mp4)$"
+    },
+    "thumbnail_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 255,
+      "pattern": "^analytics/\\d{4}/\\d{2}/\\d{2}/[0-9a-f-]{36}(\\.thumb)?\\.(jpg|mp4)$"
+    },
+    "clip_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 255,
+      "pattern": "^analytics/\\d{4}/\\d{2}/\\d{2}/[0-9a-f-]{36}(\\.thumb)?\\.(jpg|mp4)$"
+    }
+  },
+  "required": [
+    "id",
+    "action",
+    "camera",
+    "view",
+    "kind",
+    "label",
+    "started_at"
+  ]
+}

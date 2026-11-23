@@ -26,11 +26,11 @@ async def read_config(service: AnalyticsConfigService = Depends(get_config_servi
 async def ingest_event(
     data: AnalyticsEventIn, service: AnalyticsIngestService = Depends(get_ingest_service)
 ) -> Response:
-    """Store one event change.
+    """Publish one event change on the event bus, for an engine that posts instead of publishing itself.
 
     Args:
         data: The event change.
-        service: Ingest service.
+        service: Intake service.
 
     Returns:
         Empty response.
@@ -44,14 +44,14 @@ async def ingest_observations(
     report: ObservationReport,
     service: AnalyticsIngestService = Depends(get_ingest_service),
 ) -> Response:
-    """Keep the latest observations.
+    """Publish the latest observation of every view on the event bus.
 
     Args:
         report: The report.
-        service: Ingest service.
+        service: Intake service.
 
     Returns:
         Empty response.
     """
-    service.observe(report)
+    await service.observe(report)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

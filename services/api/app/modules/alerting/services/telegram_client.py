@@ -27,6 +27,11 @@ class TelegramError(Exception):
         self.description = description
 
     @property
+    def transient(self) -> bool:
+        """bool: Whether the call may succeed later: Telegram was unreachable, busy or failing."""
+        return self.code == 0 or self.code == 429 or self.code >= 500
+
+    @property
     def gone(self) -> bool:
         """bool: Whether the chat blocked the bot or no longer exists, so nothing more should be sent to it."""
         return self.code in (400, 403) and any(

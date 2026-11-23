@@ -14,7 +14,7 @@ from app.modules.alerting.enums import PushProvider
 from app.modules.alerting.schemas import PushProviders, PushTargetCreate, PushTargetList, PushTargetRead, PushTestResult
 from app.modules.alerting.services.providers import Provider, providers
 
-__all__ = ["DISABLE_AFTER_FAILURES", "PushTargetService", "deliver"]
+__all__ = ["DISABLE_AFTER_FAILURES", "FAILED", "RETRY", "SENT", "PushTargetService", "deliver", "deliver_each"]
 
 DISABLE_AFTER_FAILURES = 10
 DELIVERY_CONCURRENCY = 16
@@ -40,8 +40,15 @@ def target_read(target: PushTarget) -> PushTargetRead:
     )
 
 
-async def deliver(targets: list[PushTarget], data: dict[str, str], available: dict[PushProvider, Provider]) -> int:
-    """Send a message to targets and record each outcome on its row.
+SENT = "sent"
+RETRY = "retry"
+FAILED = "failed"
+
+
+async def deliver_each(
+    targets: list[PushTarget], data: dict[str, str], available: dict[PushProvider, Provider]
+) -> list[str]:
+    """Send a message to targets, record each outcome on its row and say which may succeed on a retry.
 
     A target the provider reports gone is disabled at once, and one that failed many times in a row is disabled
     too; the caller commits.
@@ -52,38 +59,52 @@ async def deliver(targets: list[PushTarget], data: dict[str, str], available: di
         available: Providers by name.
 
     Returns:
-        The number of targets the providers accepted.
+        sent, retry or failed for each target, in order: retry for a failure of a target that stays enabled.
     """
     semaphore = asyncio.Semaphore(DELIVERY_CONCURRENCY)
 
-    async def one(target: PushTarget) -> bool:
+    async def one(target: PushTarget) -> str:
         """Send to one target once a slot is free.
 
         Args:
             target: The target.
 
         Returns:
-            Whether the provider accepted it.
+            sent, retry or failed.
         """
         provider = available.get(PushProvider(target.provider))
         if provider is None or not provider.enabled:
             target.last_error = "The provider is not set up"
-            return False
+            return FAILED
         async with semaphore:
             outcome = await provider.send(target.token, data)
         if outcome.ok:
             target.failures = 0
             target.last_error = None
             target.last_success_at = datetime.now(UTC)
-            return True
+            return SENT
         target.failures += 1
         target.last_error = (outcome.error or "Delivery failed")[:200]
         if outcome.gone or target.failures >= DISABLE_AFTER_FAILURES:
             target.enabled = False
-        return False
+            return FAILED
+        return RETRY
 
-    results = await asyncio.gather(*(one(target) for target in targets))
-    return sum(1 for result in results if result)
+    return list(await asyncio.gather(*(one(target) for target in targets)))
+
+
+async def deliver(targets: list[PushTarget], data: dict[str, str], available: dict[PushProvider, Provider]) -> int:
+    """Send a message to targets and record each outcome on its row.
+
+    Args:
+        targets: The targets.
+        data: Message data, ids only.
+        available: Providers by name.
+
+    Returns:
+        The number of targets the providers accepted.
+    """
+    return sum(1 for outcome in await deliver_each(targets, data, available) if outcome == SENT)
 
 
 class PushTargetService:
