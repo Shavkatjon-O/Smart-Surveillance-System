@@ -9,6 +9,7 @@ dependencies = [
     "asyncpg>=0.30",
     "bcrypt>=4.3",
     "cryptography>=45.0",
+    "event-bus",
     "fastapi>=0.120",
     "httpx>=0.28",
     "numpy>=2.3",
@@ -33,6 +34,7 @@ package = false
 
 [tool.uv.sources]
 camera-adapters = { workspace = true }
+event-bus = { workspace = true }
 
 [tool.ruff]
 line-length = 120

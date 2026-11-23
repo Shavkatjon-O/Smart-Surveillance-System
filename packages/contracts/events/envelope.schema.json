@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/envelope.schema.json",
+  "title": "Envelope",
+  "description": "CloudEvents 1.0 envelope in the structured JSON mode, with the organisation and site extensions. The id is the message's UUID and its idempotency key, published as Nats-Msg-Id. The type names the data schema, which is the file named after the type.",
+  "type": "object",
+  "properties": {
+    "specversion": {
+      "const": "1.0",
+      "description": "CloudEvents version"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Message id and idempotency key"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "URI reference of the producer, such as /sss/analytics"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^sss(\\.[a-z0-9-]+)+\\.v[0-9]+$",
+      "description": "Versioned event type, such as sss.analytics.event.v1"
+    },
+    "subject": {
+      "type": "string",
+      "description": "What the event is about within the producer, such as the surveillance event's id"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When it happened"
+    },
+    "datacontenttype": {
+      "const": "application/json",
+      "description": "Media type of data"
+    },
+    "organisation": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Extension: public id of the organisation, absent for platform messages"
+    },
+    "site": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Extension: public id of the site, absent for organisation-wide messages"
+    },
+    "data": {
+      "type": "object",
+      "description": "The payload, valid against the schema of its type"
+    }
+  },
+  "required": [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "data"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.deadletter.v1.schema.json",
+  "title": "Dead letter",
+  "description": "A message a consumer gave up on after its last delivery, or rejected, published on sss.deadletter.<stream>.<consumer> with the reason.",
+  "type": "object",
+  "properties": {
+    "stream": {
+      "type": "string"
+    },
+    "consumer": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string",
+      "description": "Subject the message was published on"
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reason": {
+      "type": "string"
+    },
+    "envelope": {
+      "type": "object",
+      "description": "The original envelope"
+    },
+    "payload": {
+      "type": "string",
+      "description": "The start of a payload that was not an envelope"
+    }
+  },
+  "required": [
+    "stream",
+    "consumer",
+    "subject",
+    "attempts",
+    "reason"
+  ]
+}

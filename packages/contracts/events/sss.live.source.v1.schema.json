@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.live.source.v1.schema.json",
+  "title": "Live source",
+  "description": "The state of a camera's ONVIF event subscription, the EventSourceRead of the API, sent on sss.<organisation>.<site>.live as a source message.",
+  "type": "object",
+  "properties": {
+    "camera_uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "camera_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string"
+    },
+    "mode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "endpoint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "conditions": {
+      "type": "object"
+    },
+    "connected_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "last_message_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "camera_uuid",
+    "state"
+  ]
+}

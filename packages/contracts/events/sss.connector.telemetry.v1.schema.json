@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.connector.telemetry.v1.schema.json",
+  "title": "Connector telemetry",
+  "description": "Telemetry of a connector, reserved for connectors that join the bus as leaf nodes, on sss.connector.<connector>.telemetry.",
+  "type": "object",
+  "properties": {
+    "connector": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Connector id"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time of the reading"
+    },
+    "readings": {
+      "type": "object",
+      "description": "Measured values by name"
+    }
+  },
+  "required": [
+    "connector",
+    "at"
+  ]
+}

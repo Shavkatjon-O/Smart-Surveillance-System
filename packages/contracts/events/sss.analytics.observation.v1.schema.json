@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.analytics.observation.v1.schema.json",
+  "title": "View observation",
+  "description": "The latest status of one analytics view, published on sss.<organisation>.<site>.analytics.<view>.observation every few seconds. The stream keeps the last one per view.",
+  "type": "object",
+  "properties": {
+    "at": {
+      "type": "number",
+      "description": "Time of the report, seconds since the epoch"
+    },
+    "pipeline": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Pipeline state of the engine"
+    },
+    "gpu": {
+      "type": "object",
+      "description": "GPU reading of the engine"
+    },
+    "view": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "description": "Status of the view: state, rates, latency, objects, counts, tamper and suspended zones"
+    }
+  },
+  "required": [
+    "at",
+    "view"
+  ]
+}

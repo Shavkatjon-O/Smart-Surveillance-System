@@ -1,0 +1,54 @@
+name: event-bus
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/event-bus/**"
+      - "packages/contracts/events/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/event-bus.yml"
+  pull_request:
+    paths:
+      - "packages/event-bus/**"
+      - "packages/contracts/events/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/event-bus.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  event-bus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      nats:
+        image: nats:2.15.3-alpine
+        command: -js
+        ports:
+          - 4222:4222
+    env:
+      SSS_TEST_NATS_URL: nats://127.0.0.1:4222
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install the workspace
+        run: uv sync --frozen --all-packages
+      - name: Lint
+        working-directory: packages/event-bus
+        run: uv run --frozen ruff check .
+      - name: Check formatting
+        working-directory: packages/event-bus
+        run: uv run --frozen ruff format --check .
+      - name: Test, with the JetStream tests against the NATS container
+        working-directory: packages/event-bus
+        run: uv run --frozen pytest -q -rs

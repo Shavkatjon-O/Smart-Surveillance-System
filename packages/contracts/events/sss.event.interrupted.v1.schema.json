@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.event.interrupted.v1.schema.json",
+  "title": "Interrupted event",
+  "description": "The close of an event a restart left open, published on the event's own camera or analytics subject. The event store applies it only while the event is still open, so a real close that arrives first wins.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Event id"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End to record"
+    }
+  },
+  "required": [
+    "id",
+    "ended_at"
+  ]
+}

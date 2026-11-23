@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/main/packages/contracts/events/sss.live.source-removed.v1.schema.json",
+  "title": "Live source removed",
+  "description": "A camera whose event subscription ended because the camera was removed, sent on sss.<organisation>.<site>.live as a source_removed message.",
+  "type": "object",
+  "properties": {
+    "camera_uuid": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "camera_uuid"
+  ]
+}
