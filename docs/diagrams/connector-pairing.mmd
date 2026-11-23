@@ -1,0 +1,12 @@
+sequenceDiagram
+  participant C as Connector
+  participant A as API
+  participant P as App
+  C->>A: request a device code
+  A-->>C: user code and device code
+  Note over C: shows the code and a QR code
+  P->>A: claim the code for a site
+  C->>A: poll with the device code
+  A-->>C: connector credential
+  C->>A: heartbeat and discovery reports
+  P->>A: list the discovered cameras

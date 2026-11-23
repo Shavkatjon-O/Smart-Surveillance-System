@@ -44,55 +44,15 @@ Billing arrives later as its own domain. Engines and integrations that are not C
 
 ## System context
 
-```mermaid
-flowchart LR
-    owner["Site owner or operator"]
-    admin["Platform administrator"]
-    sss["Smart Surveillance System"]
-    cams["IP cameras and V380 cameras"]
-    tvdev["Android TV"]
-    push["Push and mail services"]
-    owner -->|"watches, controls, investigates"| sss
-    admin -->|"administers"| sss
-    tvdev -->|"wall streams"| sss
-    sss -->|"RTSP, ONVIF, vendor protocols"| cams
-    sss -->|"notifications"| push
-```
+![System context](diagrams/system-context.png)
 
 ## Containers
 
-```mermaid
-flowchart TB
-    browser["Browser"]
-    tv["TV app"]
-    subgraph stack["Compose stack"]
-        web["web: nginx and console export"]
-        api["backend: FastAPI API"]
-        db[("postgres")]
-        g2["go2rtc"]
-        an["analytics: DeepStream"]
-        br["v380 bridges, or v380 relays with the v380-native profile"]
-        ev[("events volume")]
-    end
-    cams["Cameras"]
-    browser --> web
-    web -->|"/api"| api
-    web -->|"/go2rtc"| g2
-    tv -->|"composed RTSP streams"| g2
-    tv -->|"direct RTSP and V380"| cams
-    api --> db
-    api -->|"streams, ONVIF"| cams
-    api -->|"stream control"| g2
-    api -->|"configuration"| an
-    an -->|"/internal events, faces"| api
-    g2 -->|"TV composer asks /internal"| api
-    g2 --> cams
-    g2 --> br
-    an -->|"RTSP"| g2
-    br --> cams
-    api --- ev
-    an --- ev
-```
+The first diagram shows the requests between the containers, the second the video between them, the cameras and the TV app.
+
+![Containers: requests](diagrams/containers-requests.png)
+
+![Containers: video](diagrams/containers-video.png)
 
 ## Dependency rules
 

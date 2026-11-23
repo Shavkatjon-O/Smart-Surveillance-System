@@ -2,6 +2,7 @@ import { generateArchitecture, generateContributing } from "./documents.ts"
 import { generateCameras } from "./cameras.ts"
 import { generateChangelog } from "./changelog.ts"
 import { generateConfiguration } from "./configuration.ts"
+import { generateDiagrams } from "./diagrams.ts"
 import { generateOpenAPI } from "./openapi.ts"
 import { generateRoutes } from "./routes.ts"
 import { repoRoot } from "./sources.ts"
@@ -14,6 +15,7 @@ import { repoRoot } from "./sources.ts"
 async function main(): Promise<void> {
   console.log(`[docs] generating from ${repoRoot}`)
   const steps: [string, () => string | Promise<string>][] = [
+    ["diagrams", generateDiagrams],
     ["cameras", generateCameras],
     ["configuration", generateConfiguration],
     ["api", generateOpenAPI],

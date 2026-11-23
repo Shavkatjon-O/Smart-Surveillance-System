@@ -31,6 +31,7 @@ export const SOURCES = {
   adapters: { name: "adapters", variable: "DOCS_ADAPTERS", fallback: "packages/camera-adapters/camera_adapters" },
   openapi: { name: "openapi", variable: "DOCS_OPENAPI", fallback: "packages/contracts/openapi.json" },
   architecture: { name: "architecture", variable: "DOCS_ARCHITECTURE", fallback: "docs/architecture.md" },
+  diagrams: { name: "diagrams", variable: "DOCS_DIAGRAMS", fallback: "docs/diagrams" },
   pairingCatalog: {
     name: "pairing-catalog",
     variable: "DOCS_PAIRING_CATALOG",

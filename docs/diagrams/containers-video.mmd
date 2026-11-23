@@ -1,0 +1,18 @@
+flowchart TB
+    tv["TV app"]
+    browser["Browser"]
+    subgraph stack["compose stack"]
+        web["web: nginx and console export"]
+        an["analytics: DeepStream"]
+        g2["go2rtc"]
+        br["v380 bridges, or v380 relays with the v380-native profile"]
+    end
+    cams["Cameras"]
+    browser --> web
+    web -->|"/go2rtc"| g2
+    an -->|"RTSP"| g2
+    tv -->|"composed RTSP streams"| g2
+    tv -->|"direct RTSP and V380"| cams
+    g2 --> br
+    g2 --> cams
+    br --> cams

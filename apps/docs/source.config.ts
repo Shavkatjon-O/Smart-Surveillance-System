@@ -1,4 +1,3 @@
-import { remarkMdxMermaid } from "fumadocs-core/mdx-plugins"
 import { defineConfig, defineDocs } from "fumadocs-mdx/config"
 import { metaSchema, pageSchema } from "fumadocs-core/source/schema"
 
@@ -20,6 +19,6 @@ export const docs = defineDocs({
 
 export default defineConfig({
   mdxOptions: {
-    remarkPlugins: [remarkMdxMermaid, remarkPlainAddresses],
+    remarkPlugins: [remarkPlainAddresses],
   },
 })
