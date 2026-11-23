@@ -14,6 +14,6 @@ docker run --rm -it \
   -e DISPLAY="${DISPLAY:-:0}" \
   -e STREAM="${STREAM:-main}" \
   -e SCREEN_W="$SCREEN_W" -e SCREEN_H="$SCREEN_H" \
-  --env-file ../.env \
+  --env-file ../../deploy/server/.env \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   smart-surveillance-system-cv:latest "$@"

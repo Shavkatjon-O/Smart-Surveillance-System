@@ -16,14 +16,14 @@ x-dev-hardening: &dev-hardening
 
 x-dev-camera: &dev-camera
   <<: *dev-hardening
-  build: ./tools/devkit/camera
+  build: ../../tools/devkit/camera
   image: smart-surveillance-dev-camera:local
   profiles: [devkit]
   cap_add:
     - NET_BIND_SERVICE
   mem_limit: 256m
   volumes:
-    - ./tools/devkit/samples:/samples:ro
+    - ../../tools/devkit/samples:/samples:ro
   healthcheck:
     test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:1984/api"]
     interval: 15s
@@ -32,7 +32,7 @@ x-dev-camera: &dev-camera
 
 x-dev-v380-camera: &dev-v380-camera
   <<: *dev-hardening
-  build: ./tools/devkit/v380
+  build: ../../tools/devkit/v380
   image: smart-surveillance-dev-v380-camera:local
   profiles: [devkit]
   read_only: true
@@ -40,7 +40,7 @@ x-dev-v380-camera: &dev-v380-camera
     - /tmp
   mem_limit: 256m
   volumes:
-    - ./tools/devkit/samples:/samples:ro
+    - ../../tools/devkit/samples:/samples:ro
   healthcheck:
     test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 8800), 2).close()"]
     interval: 15s
@@ -57,14 +57,20 @@ x-dev-v380-relay: &dev-v380-relay
 
 services:
   postgres:
+    extends:
+      file: ../server/docker-compose.yml
+      service: postgres
     container_name: smart-surveillance-dev-postgres
 
   go2rtc:
+    extends:
+      file: ../server/docker-compose.yml
+      service: go2rtc
     image: alexxit/go2rtc:1.9.14
     container_name: smart-surveillance-dev-go2rtc
     deploy: !reset {}
     volumes: !override
-      - ./tools/devkit/go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ./go2rtc.yaml:/config/go2rtc.yaml:ro
     ports: !override
       - "127.0.0.1:${SSS_DEV_WEBRTC_PORT:-18755}:8555/tcp"
       - "127.0.0.1:${SSS_DEV_WEBRTC_PORT:-18755}:8555/udp"
@@ -74,10 +80,13 @@ services:
         ipv4_address: 172.31.252.2
 
   backend:
+    extends:
+      file: ../server/docker-compose.yml
+      service: backend
     image: smart-surveillance-dev-backend:local
     container_name: smart-surveillance-dev-backend
     env_file: !override
-      - .env.dev
+      - .env
     ports:
       - "127.0.0.1:${SSS_DEV_API_PORT:-18700}:8000"
     networks: !override
@@ -88,30 +97,26 @@ services:
     develop:
       watch:
         - action: sync+restart
-          path: ./services/api/app
+          path: ../../services/api/app
           target: /app/app
         - action: rebuild
-          path: ./services/api/pyproject.toml
+          path: ../../services/api/pyproject.toml
 
   analytics:
+    extends:
+      file: ../server/docker-compose.yml
+      service: analytics
     image: smart-surveillance-dev-analytics:local
     container_name: smart-surveillance-dev-analytics
     profiles: [analytics]
     env_file: !override
-      - .env.dev
-
-  v380-ptz-1:
-    image: smart-surveillance-dev-v380-bridge:local
-    container_name: smart-surveillance-dev-v380-ptz-1
-    profiles: [v380]
-
-  v380-ptz-2:
-    image: smart-surveillance-dev-v380-bridge:local
-    container_name: smart-surveillance-dev-v380-ptz-2
-    profiles: [v380]
+      - .env
 
   v380-relay-ptz-1:
     <<: *dev-v380-relay
+    extends:
+      file: ../server/docker-compose.yml
+      service: v380-relay-ptz-1
     container_name: smart-surveillance-dev-v380-relay-ptz-1
     environment:
       SSS_V380_HOST: 172.31.250.21
@@ -125,6 +130,9 @@ services:
 
   v380-relay-ptz-2:
     <<: *dev-v380-relay
+    extends:
+      file: ../server/docker-compose.yml
+      service: v380-relay-ptz-2
     container_name: smart-surveillance-dev-v380-relay-ptz-2
     environment:
       SSS_V380_HOST: 172.31.250.22
@@ -137,6 +145,9 @@ services:
         condition: service_healthy
 
   web:
+    extends:
+      file: ../server/docker-compose.yml
+      service: web
     image: smart-surveillance-dev-web:local
     container_name: smart-surveillance-dev-web
     ports: !override
@@ -240,7 +251,7 @@ services:
 
   telegram:
     <<: *dev-hardening
-    build: ./tools/devkit/telegram
+    build: ../../tools/devkit/telegram
     image: smart-surveillance-dev-telegram:local
     container_name: smart-surveillance-dev-telegram
     profiles: [devkit]
@@ -255,7 +266,7 @@ services:
   connector:
     <<: *dev-hardening
     build:
-      context: .
+      context: ../..
       dockerfile: services/connector/Dockerfile
     image: smart-surveillance-dev-connector:local
     container_name: smart-surveillance-dev-connector
@@ -284,9 +295,15 @@ services:
         ipv4_address: 172.31.250.2
 
 volumes:
+  postgres:
+  events:
+  analytics-engines:
   connector-data:
 
 networks:
+  cams:
+  database:
+    internal: true
   site-lan:
     internal: true
     ipam:

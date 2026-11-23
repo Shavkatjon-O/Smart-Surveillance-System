@@ -17,7 +17,7 @@ x-hardening: &hardening
 
 x-v380-bridge: &v380-bridge
   <<: [*restart, *hardening]
-  build: ./services/v380-bridge
+  build: ../../services/v380-bridge
   image: smart-surveillance-system-v380-bridge:local
   logging: *logging
   mem_limit: 512m
@@ -32,7 +32,7 @@ x-v380-bridge: &v380-bridge
 x-v380-relay: &v380-relay
   <<: [*restart, *hardening]
   build:
-    context: .
+    context: ../..
     dockerfile: services/v380-relay/Dockerfile
   image: smart-surveillance-system-v380-relay:local
   profiles: [v380-native]
@@ -104,8 +104,8 @@ services:
 
       SSS_LAN_BIND: ${SSS_LAN_BIND:?set SSS_LAN_BIND to this machine LAN address}
     volumes:
-      - ./deploy/go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
-      - ./deploy/go2rtc/go2rtc-tv.sh:/config/tv.sh:ro
+      - ./go2rtc/go2rtc.yaml:/config/go2rtc.yaml:ro
+      - ./go2rtc/go2rtc-tv.sh:/config/tv.sh:ro
     ports:
       - "${SSS_LAN_BIND:?set SSS_LAN_BIND to this machine LAN address}:8554:8554"
       - "${SSS_LAN_BIND:?set SSS_LAN_BIND to this machine LAN address}:8555:8555/tcp"
@@ -120,7 +120,7 @@ services:
   backend:
     <<: [*restart, *hardening]
     build:
-      context: .
+      context: ../..
       dockerfile: services/api/Dockerfile
     image: smart-surveillance-system-backend:local
     container_name: smart-surveillance-system-backend
@@ -148,7 +148,7 @@ services:
   analytics:
     <<: [*restart, *hardening]
     build:
-      context: ./services/analytics
+      context: ../../services/analytics
       target: runtime
     image: smart-surveillance-system-analytics:local
     container_name: smart-surveillance-system-analytics
@@ -169,8 +169,8 @@ services:
               count: all
               capabilities: [gpu, compute, utility, video]
     volumes:
-      - ${SSS_ANALYTICS_MODELS_DIR:-./services/analytics/models}:/models:ro
-      - ${SSS_ANALYTICS_FACE_MODELS_DIR:-./services/analytics/models/face}:/face-models:ro
+      - ${SSS_ANALYTICS_MODELS_DIR:-../../services/analytics/models}:/models:ro
+      - ${SSS_ANALYTICS_FACE_MODELS_DIR:-../../services/analytics/models/face}:/face-models:ro
       - analytics-engines:/engines
       - events:/data/events
       - type: tmpfs
@@ -196,13 +196,13 @@ services:
     container_name: smart-surveillance-system-v380-ptz-1
     command:
       - --id
-      - ${V380_PTZ_1_ID:?set V380_PTZ_1_ID}
+      - ${V380_PTZ_1_ID:-}
       - --username
       - ${V380_USERNAME:-admin}
       - --password
-      - ${V380_PASSWORD:?set V380_PASSWORD}
+      - ${V380_PASSWORD:-}
       - --ip
-      - ${V380_PTZ_1_HOST:?set V380_PTZ_1_HOST}
+      - ${V380_PTZ_1_HOST:-}
       - --output
       - rtsp
       - --enable-onvif
@@ -217,13 +217,13 @@ services:
     container_name: smart-surveillance-system-v380-ptz-2
     command:
       - --id
-      - ${V380_PTZ_2_ID:?set V380_PTZ_2_ID}
+      - ${V380_PTZ_2_ID:-}
       - --username
       - ${V380_USERNAME:-admin}
       - --password
-      - ${V380_PASSWORD:?set V380_PASSWORD}
+      - ${V380_PASSWORD:-}
       - --ip
-      - ${V380_PTZ_2_HOST:?set V380_PTZ_2_HOST}
+      - ${V380_PTZ_2_HOST:-}
       - --output
       - rtsp
       - --enable-onvif
@@ -255,7 +255,7 @@ services:
 
   web:
     <<: [*restart, *hardening]
-    build: ./apps/console
+    build: ../../apps/console
     image: smart-surveillance-system-web:local
     container_name: smart-surveillance-system-web
     logging: *logging

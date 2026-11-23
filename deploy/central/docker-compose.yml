@@ -1,0 +1,55 @@
+name: smart-surveillance-system
+
+services:
+  postgres:
+    extends:
+      file: ../server/docker-compose.yml
+      service: postgres
+    environment:
+      POSTGRES_PASSWORD: !reset null
+      POSTGRES_PASSWORD_FILE: /run/secrets/sss_db_password
+    secrets:
+      - sss_db_password
+
+  go2rtc:
+    extends:
+      file: ../server/docker-compose.yml
+      service: go2rtc
+
+  backend:
+    extends:
+      file: ../server/docker-compose.yml
+      service: backend
+    env_file: !override
+      - .env
+    secrets:
+      - sss_db_password
+      - sss_secret_key
+
+  analytics:
+    extends:
+      file: ../server/docker-compose.yml
+      service: analytics
+    env_file: !override
+      - .env
+
+  web:
+    extends:
+      file: ../server/docker-compose.yml
+      service: web
+
+volumes:
+  postgres:
+  events:
+  analytics-engines:
+
+networks:
+  cams:
+  database:
+    internal: true
+
+secrets:
+  sss_db_password:
+    file: ${SSS_SECRETS_DIR:?set SSS_SECRETS_DIR to the folder of the secret files}/sss_db_password
+  sss_secret_key:
+    file: ${SSS_SECRETS_DIR:?set SSS_SECRETS_DIR to the folder of the secret files}/sss_secret_key

@@ -9,7 +9,7 @@ x-logging: &logging
 services:
   connector:
     build:
-      context: .
+      context: ../..
       dockerfile: services/connector/Dockerfile
     image: smart-surveillance-connector:local
     container_name: smart-surveillance-connector
