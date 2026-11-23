@@ -282,16 +282,24 @@ DOCKERFILE
 """Render icon diagrams to PNG cards with the diagrams package and Graphviz.
 
 Each source is a Python file that draws one diagram with the diagrams package, as its documentation describes. Before
-a source runs, the renderer puts the dark card theme into the package's defaults and makes it keep the Graphviz graph
-instead of writing a file. The graph is drawn at SCALE times the card's pixels, or smaller when the diagram is wider
-than the card, which the script then reports, so that a diagram too wide to read can be laid out again, and the
-picture is centred on a card of the same size, colours and fonts as the Mermaid cards. Icons darker than the card are
-redrawn in light grey, and SVG icons, such as the mark in packages/brand, are converted to PNG, because Graphviz here
-reads only raster images.
+a source runs, the renderer puts the card's look into the package's defaults and makes it keep the Graphviz graph
+instead of writing a file: a dark surface, hairline clusters with their title at the top left, grey edges, and one
+accent colour for the edges a source marks with main="true". A node shows its icon above its role, the first line of
+its label, and the tool, any further line, in the muted size; a node without an icon is a box with the same two
+lines. Logos keep their colours, while cloud and generic icons, which stand in for tools without a logo, and dark
+monochrome icons are redrawn in one neutral grey. SVG icons, such as the mark in packages/brand, are converted to PNG,
+because Graphviz here reads only raster images.
+
+A source may also mark an edge label as a NATS subject with mono="true", a box node as a plain subject with
+dashed="true", a node as an invisible waypoint that keeps a long edge straight through a cluster with
+waypoint="true", and give a cluster a logo beside its title with graph_attr={"icon": <node class>}. The graph is drawn
+at SCALE times the card's pixels, or smaller when the diagram is wider than the card, which the script then reports,
+and the picture is centred on a card of the same size and border as the Mermaid cards.
 """
 
 import html
 import itertools
+import os
 import runpy
 import subprocess
 import sys
@@ -310,24 +318,29 @@ BORDER = 2
 
 BACKGROUND = "#0a0a0a"
 CARD_BORDER = "#3a3a3a"
-TEXT = "#ffffff"
-LABEL = "#d4d4d4"
-NODE = "#111111"
-NODE_BORDER = "#6a6a6a"
-EDGE = "#a3a3a3"
-CLUSTERS = ("#121212", "#1a1a1a", "#222222")
+TEXT = "#ededed"
+MUTED = "#9a9a9a"
+HAIRLINE = "#333333"
+CLUSTER_FILL = ("#101010", "#161616")
+BOX_FILL = "#161616"
+BOX_BORDER = "#4a4a4a"
+EDGE = "#6b6b6b"
+ACCENT = "#e8a33d"
+NEUTRAL = (196, 196, 196)
 
-SANS = "Ubuntu Sans Medium"
-MONO = "Ubuntu Sans Mono Medium"
-NODE_FONT = "16"
-EDGE_FONT = "15"
-CLUSTER_FONT = "15"
+SANS = "Ubuntu Sans"
+SANS_STRONG = "Ubuntu Sans Medium"
+MONO = "Ubuntu Sans Mono"
+LARGE = 16
+SMALL = 13
 
-ICON = 64
+ICON = 48
+NODE_WIDTH = 88
+BOX_WIDTH = 124
 GAP = 6
 
 DARK = 80
-LIGHT = (50, 212)
+STAND_INS = ("/resources/aws/", "/resources/generic/")
 
 WORK = Path(tempfile.mkdtemp())
 ICONS: dict[str, str] = {}
@@ -336,14 +349,14 @@ IDS = itertools.count()
 
 
 def icon(path: str) -> str:
-    """Return a PNG of an icon that reads on the card.
+    """Return a PNG of an icon in the card's icon language.
 
     Args:
         path: The icon's PNG or SVG file.
 
     Returns:
-        The file Graphviz draws: the icon itself, its PNG conversion, or a light grey copy when it is darker than DARK
-        on average.
+        The file Graphviz draws: a logo as it is, or converted from SVG, and a stand-in or dark monochrome icon
+        redrawn in the neutral grey.
     """
     if path in ICONS:
         return ICONS[path]
@@ -355,51 +368,90 @@ def icon(path: str) -> str:
         picture = Image.open(path).convert("RGBA")
     alpha = picture.getchannel("A")
     shade = picture.convert("L")
-    if ImageStat.Stat(shade, alpha.point(lambda a: 255 if a > 128 else 0)).mean[0] < DARK:
-        low, high = LIGHT
-        light = shade.point(lambda value: round(high - value / 255 * (high - low)))
-        Image.merge("RGBA", (light, light, light, alpha)).save(target)
+    dark = ImageStat.Stat(shade, alpha.point(lambda a: 255 if a > 128 else 0)).mean[0] < DARK
+    if dark or any(part in path for part in STAND_INS):
+        grey = [Image.new("L", picture.size, value) for value in NEUTRAL]
+        if dark:
+            ink = shade.point(lambda value: 255 if value < 160 else 0)
+            alpha = Image.composite(alpha, Image.new("L", picture.size, 0), ink)
+        Image.merge("RGBA", (*grey, alpha)).save(target)
     elif path.endswith(".png"):
         target = Path(path)
     ICONS[path] = str(target)
     return ICONS[path]
 
 
+def font(text: str, face: str, size: int, colour: str) -> str:
+    """Return HTML-like Graphviz markup of escaped text in one face, size and colour.
+
+    Args:
+        text: The text, plain.
+        face: Font name.
+        size: Size in points.
+        colour: Colour.
+
+    Returns:
+        The markup.
+    """
+    return f'<FONT FACE="{face}" POINT-SIZE="{size}" COLOR="{colour}">{html.escape(text)}</FONT>'
+
+
+def lines(label: str, width: int, mono: bool, keep: bool) -> str:
+    """Return the table rows of a node's role and tool lines.
+
+    Args:
+        label: The node's label: the role on the first line and the tool on the next, if any.
+        width: Least width of the rows in points.
+        mono: Whether the role is a NATS subject, set in the monospaced face.
+        keep: Whether to keep an empty tool row when the label has one line, so icon nodes of a rank share their
+            height.
+
+    Returns:
+        The rows.
+    """
+    role, _, tool = label.partition("\n")
+    face = MONO if mono else SANS_STRONG
+    rows = f'<TR><TD WIDTH="{width}">{font(role, face, LARGE, TEXT)}</TD></TR>'
+    if tool:
+        rows += f"<TR><TD>{font(tool.replace(chr(10), ', '), SANS, SMALL, MUTED)}</TD></TR>"
+    elif keep:
+        rows += f'<TR><TD HEIGHT="{SMALL + 3}"></TD></TR>'
+    return rows
+
+
 def theme() -> None:
-    """Put the card's colours, fonts and node sizes into the defaults of the diagrams package.
+    """Put the card's look into the defaults of the diagrams package.
 
     Nodes get sequential ids instead of random ones, so the same source always gives the same graph, and the edges
-    are splines, which keep their labels beside them, unless a diagram sets splines in its graph_attr.
+    are polylines unless a diagram sets splines in its graph_attr.
     """
     Diagram._default_graph_attrs = {
         "bgcolor": BACKGROUND,
         "pad": "0.05",
-        "nodesep": "0.45",
-        "ranksep": "0.6",
+        "nodesep": "0.32",
+        "ranksep": "0.45",
+        "compound": "true",
+        "newrank": "true",
         "fontname": SANS,
-        "fontsize": "18",
-        "fontcolor": TEXT,
+        "fontsize": str(SMALL),
+        "fontcolor": MUTED,
     }
-    Diagram._default_node_attrs = {
-        "shape": "plain",
-        "fontname": SANS,
-        "fontsize": NODE_FONT,
-        "fontcolor": TEXT,
-    }
-    Diagram._default_edge_attrs = {"color": EDGE, "penwidth": "1.4", "arrowsize": "0.8"}
-    Edge._default_edge_attrs = {"fontcolor": LABEL, "fontname": MONO, "fontsize": EDGE_FONT}
+    Diagram._default_node_attrs = {"shape": "plain", "fontname": SANS_STRONG, "fontsize": str(LARGE), "fontcolor": TEXT}
+    Diagram._default_edge_attrs = {"color": EDGE, "penwidth": "1.2", "arrowsize": "0.7"}
+    Edge._default_edge_attrs = {"fontcolor": MUTED, "fontname": SANS, "fontsize": str(SMALL)}
     Cluster._default_graph_attrs = {
         "shape": "box",
         "style": "rounded",
         "labeljust": "l",
-        "pencolor": CARD_BORDER,
-        "penwidth": "1.4",
-        "fontname": MONO,
-        "fontsize": CLUSTER_FONT,
-        "fontcolor": LABEL,
-        "margin": "14",
+        "labelloc": "t",
+        "pencolor": HAIRLINE,
+        "penwidth": "1",
+        "fontname": SANS,
+        "fontsize": str(SMALL),
+        "fontcolor": MUTED,
+        "margin": "12",
     }
-    Cluster._Cluster__bgcolors = CLUSTERS
+    Cluster._Cluster__bgcolors = CLUSTER_FILL
 
     load = Node._load_icon
     Node._load_icon = lambda self: icon(load(self))
@@ -409,46 +461,75 @@ def theme() -> None:
 
     node_init = Node.__init__
 
-    def icon_node(self, label="", *, nodeid=None, **attrs):
+    def card_node(self, label="", *, nodeid=None, **attrs):
         """Create a node in the card's style.
 
-        An icon node becomes a table of its icon above its label, so the label takes its place in the layout, and a
-        node without an icon, such as a subject or a queue, a box of monospaced text.
+        An icon node becomes a table of its icon above its role and tool lines, so the text takes its place in the
+        layout, and a node without an icon a rounded box with the same two lines.
         """
-        if not self._icon:
-            attrs = {
-                "shape": "box",
-                "style": "rounded,filled",
-                "fillcolor": NODE,
-                "color": NODE_BORDER,
-                "penwidth": "1.4",
-                "fontname": MONO,
-                "fontsize": EDGE_FONT,
-                "margin": "0.14,0.07",
-                **attrs,
-            }
-        elif "image" not in attrs:
-            lines = "<BR/>".join(html.escape(line) for line in label.split("\n")) if label else ""
-            text = f'<TR><TD HEIGHT="{GAP}"></TD></TR><TR><TD>{lines}</TD></TR>' if lines else ""
+        mono = attrs.pop("mono", "") == "true"
+        dashed = attrs.pop("dashed", "") == "true"
+        if attrs.pop("waypoint", "") == "true":
+            attrs = {"shape": "point", "width": "0.01", "height": "0.01", "color": EDGE, **attrs}
+            node_init(self, "", nodeid=nodeid, **attrs)
+            return
+        if self._icon:
             label = (
                 '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">'
                 f'<TR><TD FIXEDSIZE="TRUE" WIDTH="{ICON}" HEIGHT="{ICON}"><IMG SRC="{self._load_icon()}" SCALE="TRUE"/>'
-                f"</TD></TR>{text}</TABLE>>"
+                f'</TD></TR><TR><TD HEIGHT="{GAP}"></TD></TR>{lines(label, NODE_WIDTH, mono, True)}</TABLE>>'
             )
-            attrs = {"shape": "plain", "image": "", "height": "0", **attrs}
+        else:
+            style = "rounded,dashed" if dashed else "rounded"
+            label = (
+                f'<<TABLE BORDER="1" STYLE="{style}" COLOR="{BOX_BORDER}" BGCOLOR="{BOX_FILL}" CELLBORDER="0" '
+                f'CELLSPACING="0" CELLPADDING="4">{lines(label, BOX_WIDTH, mono, False)}</TABLE>>'
+            )
+        attrs = {"shape": "plain", "image": "", "height": "0", **attrs}
         node_init(self, label, nodeid=nodeid, **attrs)
 
-    Node.__init__ = icon_node
+    Node.__init__ = card_node
+
+    edge_init = Edge.__init__
+
+    def card_edge(self, *args, **attrs):
+        """Create an edge, in the accent colour when marked main and with a monospaced label when marked mono."""
+        if attrs.pop("main", "") == "true":
+            attrs = {"color": ACCENT, "penwidth": "2", **attrs}
+        if attrs.pop("mono", "") == "true":
+            attrs = {"fontname": MONO, **attrs}
+        edge_init(self, *args, **attrs)
+
+    Edge.__init__ = card_edge
+
+    cluster_init = Cluster.__init__
+
+    def card_cluster(self, label="cluster", direction="LR", graph_attr=None):
+        """Create a cluster, with a logo beside its title when graph_attr names a node class as its icon."""
+        graph_attr = dict(graph_attr or {})
+        logo = graph_attr.pop("icon", None)
+        cluster_init(self, label, direction, graph_attr)
+        if logo is not None:
+            root = Path(sys.modules["diagrams"].__file__).parent.parent
+            picture = icon(os.path.join(root, logo._icon_dir, logo._icon))
+            size = SMALL + 5
+            self.dot.graph_attr["label"] = (
+                '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR>'
+                f'<TD FIXEDSIZE="TRUE" WIDTH="{size}" HEIGHT="{size}"><IMG SRC="{picture}" SCALE="TRUE"/></TD>'
+                f'<TD WIDTH="6"></TD><TD>{font(label, SANS, SMALL, MUTED)}</TD></TR></TABLE>>'
+            )
+
+    Cluster.__init__ = card_cluster
 
     diagram_init = Diagram.__init__
 
-    def spline_diagram(self, *args, **kwargs):
-        """Create the diagram, with spline edges unless its graph_attr sets splines."""
+    def straight_diagram(self, *args, **kwargs):
+        """Create the diagram, with polyline edges unless its graph_attr sets splines."""
         diagram_init(self, *args, **kwargs)
         if "splines" not in (kwargs.get("graph_attr") or {}):
-            self.dot.graph_attr["splines"] = "spline"
+            self.dot.graph_attr["splines"] = "polyline"
 
-    Diagram.__init__ = spline_diagram
+    Diagram.__init__ = straight_diagram
 
     def keep_graph(self, *exc):
         """Keep the finished graph instead of rendering it to a file."""
@@ -492,7 +573,7 @@ def render(source: Path, inner: int) -> None:
     target = source.with_suffix(".png")
     card.save(target, optimize=True)
     shrunk = f", diagram {round(natural)} px shrunk to fit {inner} px" if natural > inner else ""
-    print(f"{target} {width}x{height}{shrunk}")
+    print(f"{target} {width}x{height} natural {round(natural)} px{shrunk}")
 
 
 theme()
