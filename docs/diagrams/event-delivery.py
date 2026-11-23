@@ -9,41 +9,36 @@ from diagrams.onprem.queue import Nats
 from diagrams.programming.framework import Fastapi, Flutter
 from diagrams.saas.chat import Telegram
 
-ALERTS = {"group": "alerts"}
-LIVE = {"group": "live"}
-
-with Diagram(direction="LR", show=False):
+with Diagram(show=False, graph_attr={"column": "185", "row": "100"}):
     with Cluster("Producers"):
-        store = Node("Event store", **ALERTS)
-        analytics = IotGeneric("Analytics\nDeepStream")
+        analytics = IotGeneric("Analytics\nDeepStream", grid="0,0")
+        store = Node("Event store", grid="0,1")
     with Cluster("Event bus", graph_attr={"icon": Nats}):
-        alerts = Node("Alerts\nSSS_ALERTS", **ALERTS)
-        usage = Node("Usage\nSSS_USAGE")
-        live = Node("Live\nno stream", dashed="true", **LIVE)
-        observations = Node("Observations\nSSS_OBSERVATIONS")
-    with Cluster("Workers"):
-        notifier = Node("Notifier\nTelegram, push", **ALERTS)
-        metering = Node("Metering")
+        observations = Node("Observations\nSSS_OBSERVATIONS", grid="1,0")
+        live = Node("Live\nno stream", dashed="true", grid="1,1")
+        alerts = Node("Alerts\nSSS_ALERTS", grid="1,2.45")
+        usage = Node("Usage\nSSS_USAGE", grid="1,3.55")
     with Cluster("API replicas"):
-        relay = Fastapi("Live fan-out", **LIVE)
-    with Cluster("Alert services") as services:
-        telegram = Telegram("Telegram", **ALERTS)
-        push = Messaging("Push\nFCM, ntfy")
-    database = Postgresql("Database\nPostgreSQL")
-    with Cluster("Phones and browsers") as clients:
-        phone = Flutter("Mobile app", **LIVE)
-        browser = Client("Web console")
+        relay = Fastapi("Live fan-out", grid="2,0.5")
+    with Cluster("Workers"):
+        notifier = Node("Notifier\nTelegram, push", grid="2,2.45")
+        metering = Node("Metering", grid="2,3.55")
+    with Cluster("Phones and browsers"):
+        console = Client("Web console", grid="3,0")
+        phone = Flutter("Mobile app", grid="3,1")
+    with Cluster("Alert services"):
+        telegram = Telegram("Telegram", grid="3,2.45")
+        push = Messaging("Push\nFCM, ntfy", grid="3.7,2.45")
+    database = Postgresql("Database\nPostgreSQL", grid="3,3.6")
 
-    store >> Edge(label="*.alert", mono="true", main="true") >> alerts
-    store >> Edge(label="*.live", mono="true", main="true") >> live
-    analytics >> Edge(label="*.observation", mono="true") >> observations
-    alerts >> Edge(main="true") >> notifier
-    notifier >> Edge(main="true", lhead=services.name) >> telegram
-    usage << Edge(label="*.usage", mono="true") << notifier
-    usage >> Edge() >> metering
-    metering >> Edge(label="Rollups") >> database
-    live >> Edge(main="true") >> relay
-    observations >> Edge() >> relay
-    relay >> Edge(label="SSE", main="true", lhead=clients.name) >> phone
-    notifier >> Edge(style="invis") >> push
-    relay >> Edge(style="invis") >> browser
+    store >> Edge(step="Stored events on sss.<org>.<site>.live", main="true") >> live
+    live >> Edge(step="Every API replica listens to the live subject", main="true") >> relay
+    relay >> Edge(step="Server-sent events to the console and app", main="true") >> console
+    analytics >> Edge(step="View status every 5 s, last one kept") >> observations
+    observations >> Edge(step="Replicas follow the last observation") >> relay
+    store >> Edge(step="One alert per event on sss.<org>.alert", main="true") >> alerts
+    alerts >> Edge(step="Telegram and push consumers", main="true") >> notifier
+    notifier >> Edge(step="Sent with retries per recipient", main="true") >> telegram
+    notifier >> Edge(step="Notifications sent on sss.<org>.usage") >> usage
+    usage >> Edge(step="Metering reads SSS_USAGE") >> metering
+    metering >> Edge(step="Hourly usage rollups") >> database

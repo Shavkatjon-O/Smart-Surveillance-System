@@ -9,27 +9,24 @@ from diagrams.onprem.database import Postgresql
 from diagrams.onprem.queue import Nats
 from diagrams.programming.framework import Fastapi, Flutter
 
-MAIN = {"group": "main"}
-
-with Diagram(direction="LR", show=False, graph_attr={"ranksep": "0.3"}):
+with Diagram(show=False, graph_attr={"column": "140", "row": "125"}):
     with Cluster("Site LAN"):
-        cameras = IotCamera("Cameras", **MAIN)
-        tv = Android("TV app")
+        cameras = IotCamera("Cameras", grid="0,0")
+        tv = Android("TV app", grid="0,1")
     with Cluster("Server"):
-        media = Server("Media server\ngo2rtc", **MAIN)
-        analytics = IotGeneric("Analytics\nDeepStream", **MAIN)
-        bus = Nats("Event bus\nNATS JetStream", **MAIN)
-        database = Postgresql("Database\nPostgreSQL")
-        api = Fastapi("API\nFastAPI", **MAIN)
-    with Cluster("Phones and browsers") as clients:
-        console = Client("Console", **MAIN)
-        phone = Flutter("Mobile app")
+        media = Server("Media server\ngo2rtc", grid="1,0")
+        analytics = IotGeneric("Analytics\nDeepStream", grid="2,0")
+        bus = Nats("Event bus\nNATS JetStream", grid="3,0")
+        api = Fastapi("API\nFastAPI", grid="4,0")
+        database = Postgresql("Database\nPostgreSQL", grid="4,1")
+    with Cluster("Phones and browsers"):
+        console = Client("Console", grid="5,0")
+        phone = Flutter("Mobile app", grid="5,1")
 
-    cameras >> Edge(main="true") >> media
-    cameras >> Edge(style="dashed", constraint="false") >> tv
-    media >> Edge(main="true") >> analytics
-    analytics >> Edge(label="Events", main="true") >> bus
-    bus >> Edge(main="true") >> api
-    database << Edge(label="SQL") << api
-    api >> Edge(label="HTTPS", main="true", lhead=clients.name) >> console
-    api >> Edge(style="invis") >> phone
+    cameras >> Edge(step="go2rtc pulls each camera once", main="true") >> media
+    media >> Edge(step="The original stream to the analytics", main="true") >> analytics
+    analytics >> Edge(step="Events on the event bus", main="true") >> bus
+    bus >> Edge(step="Stored by workers, relayed live by the API", main="true") >> api
+    api >> Edge(step="Sites, cameras and events in PostgreSQL") >> database
+    api >> Edge(step="Console and app call the API", main="true") >> console
+    cameras >> Edge(step="The TV app plays the cameras on the Wi-Fi", style="dashed") >> tv

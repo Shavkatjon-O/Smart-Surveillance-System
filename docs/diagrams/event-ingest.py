@@ -6,21 +6,19 @@ from diagrams.onprem.database import Postgresql
 from diagrams.onprem.queue import Nats
 from diagrams.programming.framework import Fastapi
 
-MAIN = {"group": "main"}
-
-with Diagram(direction="LR", show=False):
+with Diagram(show=False, graph_attr={"row": "110"}):
     with Cluster("Producers"):
-        analytics = IotGeneric("Analytics\nDeepStream", **MAIN)
-        api = Fastapi("API\nONVIF, intake")
+        analytics = IotGeneric("Analytics\nDeepStream", grid="0,0")
+        api = Fastapi("API\nONVIF, intake", grid="0,1")
     with Cluster("Event bus", graph_attr={"icon": Nats}):
-        events = Node("Events\nSSS_EVENTS", **MAIN)
-        deadletter = Node("Dead letters\nSSS_DEADLETTER")
+        events = Node("Events\nSSS_EVENTS", grid="1,0")
+        deadletter = Node("Dead letters\nSSS_DEADLETTER", grid="1,1")
     with Cluster("Workers"):
-        store = Node("Event store", **MAIN)
-    database = Postgresql("Database\nPostgreSQL", **MAIN)
+        store = Node("Event store", grid="2,0")
+    database = Postgresql("Database\nPostgreSQL", grid="3,0")
 
-    analytics >> Edge(label="*.analytics.*.event", mono="true", main="true") >> events
-    api >> Edge(label="*.camera.*.event", mono="true") >> events
-    events >> Edge(main="true") >> store
-    store >> Edge(label="Upsert", main="true") >> database
-    deadletter << Edge(label="Exhausted", style="dashed") << store
+    analytics >> Edge(step="Event changes on sss.<org>.<site>.analytics.<view>.event", main="true") >> events
+    api >> Edge(step="Camera events on sss.<org>.<site>.camera.<camera>.event, and edge engines' events") >> events
+    events >> Edge(step="Durable consumer event-store reads SSS_EVENTS", main="true") >> store
+    store >> Edge(step="Upserts each event by its id, so a repeat changes nothing", main="true") >> database
+    store >> Edge(step="Exhausted messages go to sss.deadletter.<stream>.<consumer>", style="dashed") >> deadletter
