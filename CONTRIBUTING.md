@@ -50,7 +50,7 @@ cd apps/tv && ./gradlew testDebugUnitTest
 
 Check every deploy target you changed with config -q, from its own .env; .github/workflows/compose.yml checks every target and profile from the example env files.
 
-Draw a diagram as a .mmd source in docs/diagrams, render it with scripts/render-diagrams.sh, which needs Chrome, and commit the PNG card beside the source; Markdown and MDX embed the card and never hold a mermaid block.
+Draw a diagram in docs/diagrams as a .py source with the diagrams package and its bundled icons, or as a .mmd source for a sequence diagram, render it with scripts/render-diagrams.sh, which needs Docker for .py sources and Chrome for .mmd sources, and commit the PNG card beside the source; Markdown and MDX embed the card and never hold a mermaid block.
 
 The API suite includes the import-linter contracts that enforce the dependency rules in docs/architecture.md.
 
