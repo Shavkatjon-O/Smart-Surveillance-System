@@ -312,13 +312,15 @@ BACKGROUND = "#0a0a0a"
 CARD_BORDER = "#3a3a3a"
 TEXT = "#ffffff"
 LABEL = "#d4d4d4"
+NODE = "#111111"
+NODE_BORDER = "#6a6a6a"
 EDGE = "#a3a3a3"
 CLUSTERS = ("#121212", "#1a1a1a", "#222222")
 
 SANS = "Ubuntu Sans Medium"
 MONO = "Ubuntu Sans Mono Medium"
-NODE_FONT = "15"
-EDGE_FONT = "14"
+NODE_FONT = "16"
+EDGE_FONT = "15"
 CLUSTER_FONT = "15"
 
 ICON = 64
@@ -408,8 +410,24 @@ def theme() -> None:
     node_init = Node.__init__
 
     def icon_node(self, label="", *, nodeid=None, **attrs):
-        """Create an icon node as a table of its icon above its label, so the label takes its place in the layout."""
-        if self._icon and "image" not in attrs:
+        """Create a node in the card's style.
+
+        An icon node becomes a table of its icon above its label, so the label takes its place in the layout, and a
+        node without an icon, such as a subject or a queue, a box of monospaced text.
+        """
+        if not self._icon:
+            attrs = {
+                "shape": "box",
+                "style": "rounded,filled",
+                "fillcolor": NODE,
+                "color": NODE_BORDER,
+                "penwidth": "1.4",
+                "fontname": MONO,
+                "fontsize": EDGE_FONT,
+                "margin": "0.14,0.07",
+                **attrs,
+            }
+        elif "image" not in attrs:
             lines = "<BR/>".join(html.escape(line) for line in label.split("\n")) if label else ""
             text = f'<TR><TD HEIGHT="{GAP}"></TD></TR><TR><TD>{lines}</TD></TR>' if lines else ""
             label = (
