@@ -32,11 +32,14 @@ RUN /opt/nvidia/deepstream/deepstream/user_additional_install.sh \
 COPY --from=parsers /build/libnvds_rfdetr_parser.so /opt/analytics/lib/
 
 WORKDIR /opt/analytics
+# hadolint ignore=DL3022
+COPY --from=event-bus . /opt/event-bus
 COPY pyproject.toml ./
 COPY app ./app
 COPY scripts ./scripts
 RUN sh scripts/tracker-config.sh \
-    && pip3 install --no-deps . && rm -rf build ./*.egg-info
+    && pip3 install --no-deps nats-py==2.17.0 /opt/event-bus . \
+    && rm -rf build ./*.egg-info /opt/event-bus
 
 RUN groupadd --system --gid 10001 analytics \
     && useradd --system --uid 10001 --gid analytics --no-create-home --shell /usr/sbin/nologin analytics \

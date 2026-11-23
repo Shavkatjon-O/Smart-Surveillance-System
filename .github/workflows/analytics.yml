@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "services/analytics/**"
+      - "packages/event-bus/**"
       - ".github/workflows/analytics.yml"
   pull_request:
     paths:
       - "services/analytics/**"
+      - "packages/event-bus/**"
       - ".github/workflows/analytics.yml"
 
 permissions:
@@ -30,8 +32,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install the pure-Python dependencies, none of which needs DeepStream
-        run: pip install numpy pyyaml pillow pytest ruff
+      - name: Install the pure-Python dependencies and the event bus, none of which needs DeepStream
+        run: pip install numpy pyyaml pillow pytest ruff nats-py==2.17.0 ../../packages/event-bus
       - name: Lint
         run: ruff check .
       - name: Check formatting
