@@ -17,8 +17,16 @@ with Diagram(show=False, graph_attr={"row": "110"}):
         store = Node("Event store", grid="2,0")
     database = Postgresql("Database\nPostgreSQL", grid="3,0")
 
-    analytics >> Edge(step="Event changes on sss.<org>.<site>.analytics.<view>.event", main="true") >> events
-    api >> Edge(step="Camera events on sss.<org>.<site>.camera.<camera>.event, and edge engines' events") >> events
-    events >> Edge(step="Durable consumer event-store reads SSS_EVENTS", main="true") >> store
-    store >> Edge(step="Upserts each event by its id, so a repeat changes nothing", main="true") >> database
+    (
+        analytics
+        >> Edge(step="Analytics publishes event changes on sss.<org>.<site>.analytics.<view>.event", main="true")
+        >> events
+    )
+    (
+        api
+        >> Edge(step="API publishes camera events on sss.<org>.<site>.camera.<camera>.event and edge engine events")
+        >> events
+    )
+    events >> Edge(step="Event store reads SSS_EVENTS with a durable consumer", main="true") >> store
+    store >> Edge(step="Event store upserts each event by its id, so a repeat changes nothing", main="true") >> database
     store >> Edge(step="Exhausted messages go to sss.deadletter.<stream>.<consumer>", style="dashed") >> deadletter

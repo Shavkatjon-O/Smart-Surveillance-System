@@ -9,24 +9,24 @@ from diagrams.onprem.database import Postgresql
 from diagrams.onprem.queue import Nats
 from diagrams.programming.framework import Fastapi, Flutter
 
-with Diagram(show=False, graph_attr={"column": "140", "row": "125"}):
+with Diagram(show=False, graph_attr={"column": "175", "row": "140"}):
     with Cluster("Site LAN"):
         cameras = IotCamera("Cameras", grid="0,0")
-        tv = Android("TV app", grid="0,1")
+        tv = Android("TV app", grid="0,1.25")
     with Cluster("Server"):
         media = Server("Media server\ngo2rtc", grid="1,0")
         analytics = IotGeneric("Analytics\nDeepStream", grid="2,0")
-        bus = Nats("Event bus\nNATS JetStream", grid="3,0")
-        api = Fastapi("API\nFastAPI", grid="4,0")
-        database = Postgresql("Database\nPostgreSQL", grid="4,1")
+        bus = Nats("Event bus\nNATS JetStream", grid="2,1")
+        api = Fastapi("API\nFastAPI", grid="3,1")
+        database = Postgresql("Database\nPostgreSQL", grid="3,2")
     with Cluster("Phones and browsers"):
-        console = Client("Console", grid="5,0")
-        phone = Flutter("Mobile app", grid="5,1")
+        console = Client("Web console", grid="4,1")
+        phone = Flutter("Mobile app", grid="4,2")
 
-    cameras >> Edge(step="go2rtc pulls each camera once", main="true") >> media
-    media >> Edge(step="The original stream to the analytics", main="true") >> analytics
+    cameras >> Edge(step="Media server pulls each camera once", main="true") >> media
+    media >> Edge(step="Original stream to analytics", main="true") >> analytics
     analytics >> Edge(step="Events on the event bus", main="true") >> bus
     bus >> Edge(step="Stored by workers, relayed live by the API", main="true") >> api
     api >> Edge(step="Sites, cameras and events in PostgreSQL") >> database
-    api >> Edge(step="Console and app call the API", main="true") >> console
-    cameras >> Edge(step="The TV app plays the cameras on the Wi-Fi", style="dashed") >> tv
+    api >> Edge(step="Web console and mobile app call the API", main="true") >> console
+    cameras >> Edge(step="TV app plays the cameras on the Wi-Fi", style="dashed") >> tv

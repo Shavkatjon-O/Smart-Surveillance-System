@@ -14,24 +14,24 @@ with Diagram(show=False, graph_attr={"column": "172", "row": "110"}):
     with Cluster("Site LAN"):
         cameras = IotCamera("Cameras", grid="0,2")
     with Cluster("Compose stack"):
-        analytics = IotGeneric("Analytics\nanalytics", grid="2,0")
+        analytics = IotGeneric("Analytics\nDeepStream", grid="2,0")
         media = Server("Media server\ngo2rtc", grid="1,1")
-        bridges = IotDeviceGateway("V380 bridges\nv380-ptz", grid="1,3.4")
+        bridges = IotDeviceGateway("V380 bridges", grid="1,3.4")
         volume = Storage("Media files\nevents volume", grid="1,0")
-        backend = Fastapi("API\nbackend", grid="2,2")
-        database = Postgresql("Database\npostgres", grid="2,3.4")
-        web = Nginx("Web\nweb", grid="3,2")
-        bus = Nats("Event bus\nnats", grid="3,3.4")
+        backend = Fastapi("API\nFastAPI", grid="2,2")
+        database = Postgresql("Database\nPostgreSQL", grid="2,3.4")
+        web = Nginx("Web\nnginx", grid="3,2")
+        bus = Nats("Event bus\nNATS JetStream", grid="3,0.75")
     with Cluster("Phones and browsers"):
         console = Client("Web console", grid="4,2")
         phone = Flutter("Mobile app", grid="4,3")
 
-    console >> Edge(step="Console and app over HTTPS", main="true") >> web
-    web >> Edge(step="nginx proxies /api to backend", main="true") >> backend
-    backend >> Edge(step="SQL to postgres", main="true") >> database
-    backend >> Edge(step="Camera events out, live events in") >> bus
-    analytics >> Edge(step="Snapshots and clips") >> volume
-    analytics >> Edge(step="Configuration poll, faces") >> backend
-    backend >> Edge(step="Registers camera streams") >> media
-    backend >> Edge(step="ONVIF events, settings, PTZ") >> cameras
-    backend >> Edge(step="PTZ, light and siren") >> bridges
+    console >> Edge(step="Web console and mobile app call the API over HTTPS", main="true") >> web
+    web >> Edge(step="Web passes /api requests to the API", main="true") >> backend
+    backend >> Edge(step="API reads and writes PostgreSQL", main="true") >> database
+    backend >> Edge(step="API publishes camera events and relays live events") >> bus
+    analytics >> Edge(step="Analytics writes snapshots and clips") >> volume
+    analytics >> Edge(step="Analytics polls its configuration and posts faces") >> backend
+    backend >> Edge(step="API registers camera streams in the media server") >> media
+    backend >> Edge(step="ONVIF events, settings and PTZ") >> cameras
+    backend >> Edge(step="PTZ, light and siren of V380 cameras") >> bridges

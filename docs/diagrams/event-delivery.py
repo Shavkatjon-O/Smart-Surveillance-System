@@ -9,7 +9,7 @@ from diagrams.onprem.queue import Nats
 from diagrams.programming.framework import Fastapi, Flutter
 from diagrams.saas.chat import Telegram
 
-with Diagram(show=False, graph_attr={"column": "185", "row": "100"}):
+with Diagram(show=False, graph_attr={"column": "200", "row": "100"}):
     with Cluster("Producers"):
         analytics = IotGeneric("Analytics\nDeepStream", grid="0,0")
         store = Node("Event store", grid="0,1")
@@ -28,17 +28,17 @@ with Diagram(show=False, graph_attr={"column": "185", "row": "100"}):
         phone = Flutter("Mobile app", grid="3,1")
     with Cluster("Alert services"):
         telegram = Telegram("Telegram", grid="3,2.45")
-        push = Messaging("Push\nFCM, ntfy", grid="3.7,2.45")
+        push = Messaging("Push\nFCM, ntfy", grid="3.62,2.45")
     database = Postgresql("Database\nPostgreSQL", grid="3,3.6")
 
-    store >> Edge(step="Stored events on sss.<org>.<site>.live", main="true") >> live
+    store >> Edge(step="Event store publishes stored events on sss.<org>.<site>.live", main="true") >> live
     live >> Edge(step="Every API replica listens to the live subject", main="true") >> relay
-    relay >> Edge(step="Server-sent events to the console and app", main="true") >> console
+    relay >> Edge(step="Server-sent events to the web console and mobile app", main="true") >> console
     analytics >> Edge(step="View status every 5 s, last one kept") >> observations
-    observations >> Edge(step="Replicas follow the last observation") >> relay
+    observations >> Edge(step="API replicas follow the last observation") >> relay
     store >> Edge(step="One alert per event on sss.<org>.alert", main="true") >> alerts
     alerts >> Edge(step="Telegram and push consumers", main="true") >> notifier
     notifier >> Edge(step="Sent with retries per recipient", main="true") >> telegram
     notifier >> Edge(step="Notifications sent on sss.<org>.usage") >> usage
     usage >> Edge(step="Metering reads SSS_USAGE") >> metering
-    metering >> Edge(step="Hourly usage rollups") >> database
+    metering >> Edge(step="Hourly usage rollups in PostgreSQL") >> database
