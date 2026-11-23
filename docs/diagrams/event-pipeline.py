@@ -1,6 +1,6 @@
 """Event pipeline: producers, subjects, the stream, the workers that consume it and where events end up."""
 
-from diagrams import Cluster, Diagram, Edge
+from diagrams import Cluster, Diagram, Edge, Node
 from diagrams.aws.iot import IotCamera, IotGeneric
 from diagrams.firebase.grow import Messaging
 from diagrams.onprem.client import Client
@@ -16,11 +16,13 @@ BOTTOM = {"labelloc": "b"}
 with Diagram(direction="TB", show=False):
     edge = IotGeneric("Edge engines")
     cameras = IotCamera("Cameras")
-    with Cluster("Producers"):
-        analytics = IotGeneric("analytics\nservice")
-        intake = Fastapi("API: intake route\n/internal/analytics")
-        subscriber = Fastapi("API: camera\nevent subscriber")
-    stream = Nats("NATS JetStream\nstream EVENTS\nsubjects events.>")
+    analytics = IotGeneric("analytics\nservice")
+    intake = Fastapi("API: intake route\n/internal/analytics")
+    subscriber = Fastapi("API: camera\nevent subscriber")
+    with Cluster("NATS JetStream", graph_attr={"labelloc": "b", "labeljust": "r"}):
+        analytics_subject = Node("events.<site>.analytics")
+        camera_subject = Node("events.<site>.camera")
+        stream = Nats("stream EVENTS\nsubjects events.>")
     with Cluster("Workers", graph_attr=BOTTOM):
         store = Python("event-store")
         notifier = Python("notifier")
@@ -38,9 +40,12 @@ with Diagram(direction="TB", show=False):
 
     cameras >> Edge(label="ONVIF\nPullPoint") >> subscriber
     edge >> Edge(label="HTTPS POST") >> intake
-    analytics >> Edge(label="events.<site>.analytics") >> stream
-    subscriber >> Edge(label="events.<site>.camera") >> stream
-    intake >> Edge(label="events.<site>.analytics") >> stream
+    analytics >> Edge(label="HTTP: config\npoll", style="dashed", constraint="false") >> intake
+    analytics >> Edge(label="publish") >> analytics_subject
+    intake >> Edge(label="republish") >> analytics_subject
+    subscriber >> Edge(label="publish") >> camera_subject
+    analytics_subject >> Edge(label="stored") >> stream
+    camera_subject >> Edge(label="stored") >> stream
     stream >> Edge(label="durable\npull") >> store
     stream >> Edge(label="durable\npull") >> notifier
     stream >> Edge(label="durable\npull") >> metering
@@ -52,4 +57,3 @@ with Diagram(direction="TB", show=False):
     notifier >> Edge(label="Bot API") >> telegram
     live >> Edge(label="SSE") >> browser
     live >> Edge(label="SSE") >> phone
-    analytics >> Edge(label="HTTP: config\npoll", style="dashed", constraint="false") >> intake
