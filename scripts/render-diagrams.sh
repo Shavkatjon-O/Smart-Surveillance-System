@@ -302,6 +302,7 @@ edge through a cluster title, so that the grid can be laid out again.
 import html
 import itertools
 import json
+import math
 import os
 import runpy
 import subprocess
@@ -344,6 +345,7 @@ NODE_WIDTH = 88
 BOX_WIDTH = 124
 GAP = 6
 BADGE = 18
+MARKER_CLEAR = 10
 
 COLUMN = 200
 ROW = 100
@@ -433,24 +435,6 @@ def lines(label: str, width: int, mono: bool, keep: bool) -> str:
     return rows
 
 
-def badge(number: int, main: bool) -> str:
-    """Return the HTML-like label of a numbered step marker.
-
-    Args:
-        number: The step's number.
-        main: Whether the step is on the main path, drawn in the accent colour.
-
-    Returns:
-        The label.
-    """
-    fill, ink = (ACCENT, BACKGROUND) if main else (BADGE_FILL, TEXT)
-    return (
-        f'<<TABLE BORDER="0" CELLBORDER="0" CELLPADDING="0" CELLSPACING="0" BGCOLOR="{fill}" STYLE="rounded"><TR>'
-        f'<TD FIXEDSIZE="TRUE" WIDTH="{BADGE}" HEIGHT="{BADGE}">{font(str(number), SANS_STRONG, SMALL, ink)}</TD>'
-        "</TR></TABLE>>"
-    )
-
-
 def theme() -> None:
     """Put the card's look and the grid into the defaults of the diagrams package.
 
@@ -515,7 +499,7 @@ def theme() -> None:
     edge_init = Edge.__init__
 
     def card_edge(self, *args, **attrs):
-        """Create an edge with its numbered step marker, in the accent colour when marked main."""
+        """Create an edge with the number of its step, in the accent colour when marked main."""
         main = attrs.pop("main", "") == "true"
         step = attrs.pop("step", "")
         if main:
@@ -524,7 +508,8 @@ def theme() -> None:
             texts = [text for text, _ in STEPS]
             if step not in texts:
                 STEPS.append((step, main))
-            attrs = {"xlabel": badge(texts.index(step) + 1 if step in texts else len(STEPS), main), **attrs}
+            number = texts.index(step) + 1 if step in texts else len(STEPS)
+            attrs = {"marker": str(number), "markermain": "1" if main else "0", **attrs}
         edge_init(self, *args, **attrs)
 
     Edge.__init__ = card_edge
@@ -591,6 +576,68 @@ def crosses(a, b, c, d) -> bool:
         return (value > 1e-6) - (value < -1e-6)
 
     return side(a, b, c) * side(a, b, d) < 0 and side(c, d, a) * side(c, d, b) < 0
+
+
+def overlap(a, b) -> bool:
+    """Tell whether two boxes, each left, bottom, right and top, overlap.
+
+    Args:
+        a: The first box.
+        b: The second box.
+
+    Returns:
+        True when they share any area.
+    """
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def hits(segment, box) -> bool:
+    """Tell whether a segment touches a box, by clipping it to the box.
+
+    Args:
+        segment: The segment's two ends.
+        box: The box as left, bottom, right and top.
+
+    Returns:
+        True when part of the segment lies in the box.
+    """
+    (x0, y0), (x1, y1) = segment
+    low, high = 0.0, 1.0
+    for start, delta, lower, upper in ((x0, x1 - x0, box[0], box[2]), (y0, y1 - y0, box[1], box[3])):
+        if abs(delta) < 1e-9:
+            if not lower <= start <= upper:
+                return False
+            continue
+        first, second = (lower - start) / delta, (upper - start) / delta
+        low, high = max(low, min(first, second)), min(high, max(first, second))
+        if low > high:
+            return False
+    return True
+
+
+def marker_place(route, half, fits):
+    """Return where a step marker sits on its edge: the free point nearest the middle of the longest segment.
+
+    Args:
+        route: The edge's points.
+        half: Half the side of the marker with its clearance, in points.
+        fits: Tells whether a box, left, bottom, right and top, is free.
+
+    Returns:
+        The marker's centre, or None when no point of the edge is free.
+    """
+    segments = sorted(zip(route, route[1:]), key=lambda pair: -math.dist(*pair))
+    for (x0, y0), (x1, y1) in segments:
+        length = math.dist((x0, y0), (x1, y1))
+        if length < 2 * half:
+            continue
+        offsets = sorted(range(int((length - 2 * half) // 2) + 1), key=lambda k: abs(half + 2 * k - length / 2))
+        for k in offsets:
+            share = (half + 2 * k) / length
+            x, y = x0 + (x1 - x0) * share, y0 + (y1 - y0) * share
+            if fits((x - half, y - half, x + half, y + half)):
+                return x, y
+    return None
 
 
 def inside(segment, box) -> bool:
@@ -739,10 +786,49 @@ def render(source: Path, inner: int) -> None:
     layer = Image.open(raw).convert("RGBA")
     picture.alpha_composite(layer, pixel(bb[0], bb[3]))
 
-    legend = ImageFont.truetype(SANS_FILE, round(SMALL * SCALE))
-    legend.set_variation_by_name("Regular")
     number_font = ImageFont.truetype(SANS_FILE, round(SMALL * SCALE))
     number_font.set_variation_by_name("Medium")
+    marker_font = ImageFont.truetype(SANS_FILE, round(SMALL * scale))
+    marker_font.set_variation_by_name("Medium")
+    clear = MARKER_CLEAR * SCALE / scale
+    half = BADGE / 2 + clear
+    taken: list[tuple[float, float, float, float]] = []
+    marked = [item for item in laid.get("edges", []) if "pos" in item and item.get("marker")]
+    for item in marked:
+        route = points(item["pos"])
+        others = [points(other["pos"]) for other in laid.get("edges", []) if "pos" in other and other is not item]
+        arrows = [(path[-2], path[-1]) for path in others + [route] if len(path) > 1]
+
+        def fits(box) -> bool:
+            """Tell whether a marker box keeps clear of nodes, arrows, cluster borders and titles, markers and edges."""
+            core = (box[0] + clear, box[1] + clear, box[2] - clear, box[3] - clear)
+            if any(overlap(box, node) for node in boxes.values()):
+                return False
+            if any(overlap(box, title) for title in titles.values()) or any(overlap(box, mark) for mark in taken):
+                return False
+            for frame in frames.values():
+                within = frame[0] <= box[0] and frame[1] <= box[1] and box[2] <= frame[2] and box[3] <= frame[3]
+                if overlap(box, frame) and not within:
+                    return False
+            if any(hits(arrow, box) for arrow in arrows):
+                return False
+            return not any(hits(segment, core) for other in others for segment in zip(other, other[1:]))
+
+        place = marker_place(route, half, fits)
+        if place is None:
+            print(f"{source}: marker {item['marker']} has no clear place on its edge", file=sys.stderr)
+            continue
+        taken.append((place[0] - half, place[1] - half, place[0] + half, place[1] + half))
+        x, y = pixel(*place)
+        size = BADGE * scale
+        fill, ink = (ACCENT, BACKGROUND) if item.get("markermain") == "1" else (BADGE_FILL, TEXT)
+        draw.rounded_rectangle(
+            [x - size / 2, y - size / 2, x + size / 2, y + size / 2], radius=round(4 * scale), fill=fill
+        )
+        draw.text((x, y), item["marker"], font=marker_font, fill=ink, anchor="mm")
+
+    legend = ImageFont.truetype(SANS_FILE, round(SMALL * SCALE))
+    legend.set_variation_by_name("Regular")
     width = CARD_WIDTH * SCALE
     usable = width - 2 * (PAD_X + BORDER) * SCALE
     longest = max((legend.getlength(text) for text, _ in STEPS), default=0) + (BADGE + 10 + 24) * SCALE
