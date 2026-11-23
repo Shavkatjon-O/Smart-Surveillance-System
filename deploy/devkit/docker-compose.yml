@@ -59,6 +59,12 @@ services:
       service: postgres
     container_name: smart-surveillance-dev-postgres
 
+  nats:
+    extends:
+      file: ../server/docker-compose.yml
+      service: nats
+    container_name: smart-surveillance-dev-nats
+
   go2rtc:
     extends:
       file: ../server/docker-compose.yml
@@ -89,6 +95,7 @@ services:
     networks: !override
       cams:
       database:
+      bus:
       store-lan:
         ipv4_address: 172.31.252.3
     develop:
@@ -98,6 +105,33 @@ services:
           target: /app/app
         - action: rebuild
           path: ../../services/api/pyproject.toml
+
+  event-store:
+    extends:
+      file: ../server/docker-compose.yml
+      service: event-store
+    image: smart-surveillance-dev-backend:local
+    container_name: smart-surveillance-dev-event-store
+    env_file: !override
+      - .env
+
+  notifier:
+    extends:
+      file: ../server/docker-compose.yml
+      service: notifier
+    image: smart-surveillance-dev-backend:local
+    container_name: smart-surveillance-dev-notifier
+    env_file: !override
+      - .env
+
+  metering:
+    extends:
+      file: ../server/docker-compose.yml
+      service: metering
+    image: smart-surveillance-dev-backend:local
+    container_name: smart-surveillance-dev-metering
+    env_file: !override
+      - .env
 
   analytics:
     extends:
@@ -304,10 +338,13 @@ volumes:
   events:
   analytics-engines:
   connector-data:
+  nats:
 
 networks:
   cams:
   database:
+    internal: true
+  bus:
     internal: true
   site-lan:
     internal: true
