@@ -1,0 +1,23 @@
+flowchart TB
+    ezviz["EZVIZ and ONVIF cameras"]
+    v380["V380 cameras"]
+    remote["Remote site cameras"]
+    bridge["v380 bridges"]
+    tv["Android TV app"]
+    connector["connector at a remote site"]
+    go2rtc["go2rtc"]
+    analytics["analytics: DeepStream"]
+    web["web: nginx"]
+    phone["Mobile app"]
+    browser["Browser"]
+    v380 -- "V380 protocol" --> bridge
+    v380 -- "V380 protocol" --> tv
+    ezviz -- "RTSP" --> tv
+    remote -- "RTSP" --> connector
+    ezviz -- "RTSP" --> go2rtc
+    bridge -- "RTSP" --> go2rtc
+    connector -- "RTSP restream" --> go2rtc
+    go2rtc -- "original H.265 over RTSP" --> analytics
+    go2rtc -- "H.264 video websocket" --> web
+    go2rtc -- "WebRTC" --> phone
+    web --> browser

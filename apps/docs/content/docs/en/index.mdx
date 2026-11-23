@@ -16,27 +16,7 @@ It runs today as a self-hosted installation on one computer in a site's own netw
 
 ## How the pieces fit
 
-```mermaid
-flowchart LR
-  cams["Cameras: ONVIF, EZVIZ, RTSP, V380"]
-  bridge["V380 bridge"]
-  go2rtc["go2rtc"]
-  analytics["Analytics engine"]
-  api["Platform API"]
-  db[("Postgres")]
-  console["Console"]
-  mobile["Mobile app"]
-  tv["TV app"]
-  cams --> go2rtc
-  cams -- "V380 protocol" --> bridge
-  bridge --> go2rtc
-  go2rtc -- "original streams" --> analytics
-  analytics -- "configuration, events" --> api
-  api --> db
-  console -- "API, video" --> api
-  mobile -- "API, WebRTC" --> api
-  cams -. "on the local Wi-Fi" .-> tv
-```
+![Platform overview](/diagrams/platform-overview.png)
 
 - go2rtc pulls each camera once and serves the original stream to the analytics engine and a browser-friendly H.264 stream to the console.
 - The analytics engine reads its configuration from the API every 5 s and posts events back, so zone and rule changes apply without a restart.

@@ -15,9 +15,8 @@ on:
       - "tools/cv-viewer/cv_viewer.py"
       - "docs/**"
       - "CONTRIBUTING.md"
-      - ".env.example"
-      - ".env.dev.example"
-      - "docker-compose*.yml"
+      - "deploy/*/.env.example"
+      - "deploy/*/docker-compose.yml"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
@@ -32,9 +31,8 @@ on:
       - "tools/cv-viewer/cv_viewer.py"
       - "docs/**"
       - "CONTRIBUTING.md"
-      - ".env.example"
-      - ".env.dev.example"
-      - "docker-compose*.yml"
+      - "deploy/*/.env.example"
+      - "deploy/*/docker-compose.yml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

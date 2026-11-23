@@ -1,20 +1,32 @@
 ---
 title: Deployment
-description: The self-hosted site, the planned central deployment, the Jetson profile and this documentation site.
+description: The deployment targets, the self-hosted site, the planned central deployment, the Jetson profile and this documentation site.
 icon: Container
 ---
 
+Each deployment target is one folder under deploy in the repository, with one docker-compose.yml that runs on its own and the .env.example of its configuration. A target reads its .env from its own folder; the [configuration reference](./reference/configuration.mdx) lists every target's variables.
+
+| Target | Runs |
+|---|---|
+| deploy/server | The whole self-hosted site on one computer |
+| deploy/central | The hosted platform that sites join through connectors |
+| deploy/connector | The connector agent at a site |
+| deploy/jetson | A site on a Jetson Orin Nano |
+| deploy/devkit | The development kit with simulated sites |
+
+central, jetson and devkit take the server's service definitions and change only what differs, so every target runs the same images.
+
 ## Self-hosted site
 
-<Status kind="live" /> One computer runs the whole site from docker-compose.yml, as [self-hosting](./getting-started/self-hosting.mdx) describes. The data lives in three named volumes: postgres for the database, events for snapshots, clips and face crops, and analytics-engines for the TensorRT engines, which can always be rebuilt.
+<Status kind="live" /> One computer runs the whole site from deploy/server, as [self-hosting](./getting-started/self-hosting.mdx) describes. The data lives in three named volumes: postgres for the database, events for snapshots, clips and face crops, and analytics-engines for the TensorRT engines, which can always be rebuilt.
 
-- Secrets: SSS_SECRET_KEY signs sessions and encrypts camera passwords; SSS_ANALYTICS_TOKEN guards the internal analytics routes; SSS_TV_RTSP_PASSWORD guards go2rtc's RTSP port. Keep .env out of version control.
+- Secrets: SSS_SECRET_KEY signs sessions and encrypts camera passwords; SSS_ANALYTICS_TOKEN guards the internal analytics routes; SSS_TV_RTSP_PASSWORD guards go2rtc's RTSP port. Keep deploy/server/.env out of version control.
 - Network: only the web entry point and go2rtc's RTSP port publish ports, on the addresses in SSS_LAN_BIND and loopback. The V380 bridges and the analytics engine publish none.
 - Retention: events, their clips and face samples follow SSS_EVENTS_RETENTION_DAYS, line counts SSS_COUNTS_RETENTION_DAYS, and health samples SSS_HEALTH_RETENTION_DAYS. Clips take a few GB a day with several people about, so size the disk or the retention for the site.
 
 ## Central deployment
 
-<Status kind="planned" /> The API and the analytics engine run centrally, and each site runs a [connector](./guides/connector.mdx). The apps talk only to the central API, live video comes over WebRTC from a central go2rtc, and a TURN relay covers networks that block UDP.
+<Status kind="planned" /> The API and the analytics engine run centrally from deploy/central, and each site runs a [connector](./guides/connector.mdx). deploy/central runs the server's services without V380 bridges, reads the database password and the secret key as Docker secrets from the folder SSS_SECRETS_DIR names, and turns SSS_DIRECT_CAMERAS off. The apps talk only to the central API, live video comes over WebRTC from a central go2rtc, and a TURN relay covers networks that block UDP.
 
 What the central deployment needs is configured through the settings the API already reads: the public address in links (SSS_PUBLIC_URL), outgoing mail (SSS_SMTP_HOST and the other SMTP settings), the access token key (SSS_ACCESS_TOKEN_KEY), STUN and TURN servers (SSS_WEBRTC_STUN_URLS, SSS_WEBRTC_TURN_URL) and the push providers (SSS_FCM_PROJECT_ID, SSS_NTFY_URL). The [configuration reference](./reference/configuration.mdx) lists them all.
 
@@ -22,10 +34,11 @@ Bandwidth decides how a view is analysed centrally: the sub stream is enough for
 
 ## Jetson Orin Nano
 
-<Status kind="untested" /> docker-compose.jetson.yml describes the site on a Jetson Orin Nano with DeepStream 9.1 or newer on JetPack 7.2, which has no hardware video encoder:
+<Status kind="untested" /> deploy/jetson describes the site on a Jetson Orin Nano with DeepStream 9.1 or newer on JetPack 7.2, which has no hardware video encoder:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.jetson.yml up -d --build
+cp deploy/jetson/.env.example deploy/jetson/.env
+docker compose -f deploy/jetson/docker-compose.yml up -d --build
 ```
 
 The analytics uses RF-DETR Nano at 4 frames per second, encodes clips with libx264, keeps one minute of buffer, reads no number plates and is capped at 3 GB; go2rtc runs from the plain image with a libx264 transcode template and no GPU reservation. Export the detectors on a PC with scripts/download-models.sh --all and copy the model folder over.
@@ -34,4 +47,4 @@ Verified on a PC: the merged configuration, that the DeepStream 9.1 image has an
 
 ## This documentation site
 
-The site in apps/docs is a static export that GitHub Pages serves. The workflow .github/workflows/docs.yml builds it when apps/docs, the contracts, the camera adapters, .env.example, the settings or docs change on main, and deploys it to Pages. apps/docs/README.md describes running and building it.
+The site in apps/docs is a static export that GitHub Pages serves. The workflow .github/workflows/docs.yml builds it when apps/docs, the contracts, the camera adapters, a deployment target's compose file or env example, the settings or docs change on main, and deploys it to Pages. apps/docs/README.md describes running and building it.

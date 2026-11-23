@@ -5,7 +5,6 @@ import { Step, Steps } from "fumadocs-ui/components/steps"
 import { Tab, Tabs } from "fumadocs-ui/components/tabs"
 import type { MDXComponents } from "mdx/types"
 
-import { Mermaid } from "@/components/mdx/mermaid"
 import { ProductMap } from "@/components/product-map"
 import { Status } from "@/components/mdx/status"
 
@@ -21,7 +20,6 @@ export function getMDXComponents(components?: MDXComponents) {
     Callout,
     Card,
     Cards,
-    Mermaid,
     ProductMap,
     Status,
     Step,

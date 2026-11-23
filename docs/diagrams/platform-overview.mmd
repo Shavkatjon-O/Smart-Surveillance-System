@@ -1,0 +1,19 @@
+flowchart TB
+    cams["Cameras: ONVIF, EZVIZ, RTSP, V380"]
+    bridge["V380 bridge"]
+    tv["TV app"]
+    go2rtc["go2rtc"]
+    analytics["Analytics engine"]
+    console["Console"]
+    mobile["Mobile app"]
+    api["Platform API"]
+    db[("Postgres")]
+    cams -- "V380 protocol" --> bridge
+    cams -. "on the local Wi-Fi" .-> tv
+    cams --> go2rtc
+    bridge --> go2rtc
+    go2rtc -- "original streams" --> analytics
+    analytics -- "configuration, events" --> api
+    console -- "API, video" --> api
+    mobile -- "API, WebRTC" --> api
+    api --> db

@@ -4,11 +4,12 @@ The connector agent runs on a site, next to its cameras. It pairs with the backe
 
 ## Run
 
-docker-compose.connector.yml at the repository root runs the agent with host networking, which multicast discovery on the site LAN needs:
+deploy/connector runs the agent with host networking, which multicast discovery on the site LAN needs. Copy its example configuration, set SSS_CONNECTOR_BACKEND_URL to the backend's address, and start it:
 
 ```
-SSS_CONNECTOR_BACKEND_URL=https://cameras.example.com docker compose -f docker-compose.connector.yml up -d
-docker compose -f docker-compose.connector.yml logs -f connector
+cp deploy/connector/.env.example deploy/connector/.env
+docker compose -f deploy/connector/docker-compose.yml up -d --build
+docker compose -f deploy/connector/docker-compose.yml logs -f connector
 ```
 
 The log shows the pairing code and its QR code. An admin of the site claims it in the app by scanning the QR code, typing the code, or picking the connector the app finds over mDNS on the same Wi-Fi. The pairing page at http://<connector>:8780/pairing shows the same code and http://<connector>:8780/pairing.svg the QR code, only while the connector waits for pairing.

@@ -1,0 +1,11 @@
+flowchart TB
+    subgraph sources["sources"]
+        direction LR
+        src["Decode each camera once, NVDEC"] --> split["One source per lens"] --> rate["Analysis rate per view"]
+    end
+    subgraph analysis["analysis"]
+        direction LR
+        det["RF-DETR Medium and NvDCF tracker"] --> rules["Rules, faces, features, tamper"] --> clip["Snapshot and H.264 clip"]
+    end
+    sources --> analysis
+    class clip result

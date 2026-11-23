@@ -1,0 +1,12 @@
+flowchart LR
+    owner["Site owner or operator"]
+    admin["Platform administrator"]
+    sss["Smart Surveillance System"]
+    cams["IP cameras and V380 cameras"]
+    tvdev["Android TV"]
+    push["Push and mail services"]
+    owner -->|"watches, controls, investigates"| sss
+    admin -->|"administers"| sss
+    tvdev -->|"wall streams"| sss
+    sss -->|"RTSP, ONVIF, vendor protocols"| cams
+    sss -->|"notifications"| push

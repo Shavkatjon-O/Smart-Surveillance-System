@@ -1,5 +1,5 @@
 import { readFileSync, rmSync } from "node:fs"
-import { dirname, join, normalize } from "node:path"
+import { basename, dirname, join, normalize } from "node:path"
 
 import { SOURCES, appDir, fromRoot, locate, repoRoot, writeGenerated } from "./sources.ts"
 
@@ -10,8 +10,8 @@ const BLOB = "https://github.com/Shavkatjon-O/Smart-Surveillance-System/blob/mai
 const PAGE = join(appDir, "content/docs/en/architecture.mdx")
 
 /**
- * Build the architecture page from the repository's architecture document, without its own title, with links to
- * other repository files pointed at GitHub.
+ * Build the architecture page from the repository's architecture document, without its own title, with its diagram
+ * images pointed at the copies in the site's public files and links to other repository files pointed at GitHub.
  *
  * @returns Where it came from, for the build log.
  */
@@ -22,12 +22,14 @@ export function generateArchitecture(): string {
     return "skipped"
   }
   const folder = dirname(source)
+  const diagrams = locate(SOURCES.diagrams, false)
   const text = readFileSync(source, "utf8")
     .replace(/^# .*\n+/, "")
-    .replace(/\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, target: string) => {
+    .replace(/(!?)\[([^\]]*)\]\((?!https?:|#|mailto:)([^)\s]+)\)/g, (_, bang: string, label: string, target: string) => {
       const [path, anchor] = target.split("#")
-      const resolved = normalize(join(folder, path)).slice(repoRoot.length + 1)
-      return `](${BLOB}/${resolved}${anchor ? `#${anchor}` : ""})`
+      const absolute = normalize(join(folder, path))
+      if (bang && diagrams && dirname(absolute) === diagrams) return `![${label}](/diagrams/${basename(absolute)})`
+      return `${bang}[${label}](${BLOB}/${absolute.slice(repoRoot.length + 1)}${anchor ? `#${anchor}` : ""})`
     })
   writeGenerated("architecture.md", `${text.trimEnd()}\n\nThis page is generated from ${fromRoot(source)}.\n`)
   writeGenerated(

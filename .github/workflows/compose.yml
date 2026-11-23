@@ -4,17 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "docker-compose*.yml"
-      - ".env.example"
-      - ".env.dev.example"
       - "deploy/**"
       - "tools/devkit/**"
       - ".github/workflows/compose.yml"
   pull_request:
     paths:
-      - "docker-compose*.yml"
-      - ".env.example"
-      - ".env.dev.example"
       - "deploy/**"
       - "tools/devkit/**"
       - ".github/workflows/compose.yml"
@@ -29,12 +23,7 @@ concurrency:
 env:
   SSS_TV_RTSP_PASSWORD: example
   SSS_DEV_CAMERA_PASSWORD: example
-  SSS_CONNECTOR_BACKEND_URL: https://cameras.example.com
-  V380_PASSWORD: example
-  V380_PTZ_1_ID: "12345678"
-  V380_PTZ_1_HOST: 192.168.1.10
-  V380_PTZ_2_ID: "87654321"
-  V380_PTZ_2_HOST: 192.168.1.11
+  SSS_SECRETS_DIR: /run/secrets
 
 jobs:
   compose:
@@ -42,17 +31,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Provide the env files the services read
-        run: cp .env.example .env && cp .env.dev.example .env.dev
-      - name: Validate the all-in-one site
-        run: docker compose --env-file .env.example -f docker-compose.yml config -q
-      - name: Validate the site with the Jetson overlay
-        run: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.jetson.yml config -q
-      - name: Validate the development kit with every profile
-        run: >-
-          docker compose -p smart-surveillance-dev --env-file .env.dev -f docker-compose.yml -f docker-compose.dev.yml
-          --profile devkit --profile analytics --profile v380 config -q
-      - name: Validate the standalone connector
-        env:
-          SSS_CONNECTOR_BACKEND_URL: https://cameras.example.com
-        run: docker compose -f docker-compose.connector.yml config -q
+      - name: Provide each target's env file from its example
+        run: for target in deploy/*/; do cp "$target.env.example" "$target.env"; done
+      - name: Validate every target alone, with each profile and with all its profiles
+        run: |
+          status=0
+          for compose in deploy/*/docker-compose.yml; do
+            profiles=$(docker compose -f "$compose" config --profiles)
+            set -- ""
+            for profile in $profiles; do set -- "$@" "--profile $profile"; done
+            if [ "$(echo $profiles | wc -w)" -gt 1 ]; then set -- "$@" "$(printf -- '--profile %s ' $profiles)"; fi
+            for flags in "$@"; do
+              echo "== $compose $flags"
+              docker compose -f "$compose" $flags config -q || status=1
+            done
+          done
+          exit $status

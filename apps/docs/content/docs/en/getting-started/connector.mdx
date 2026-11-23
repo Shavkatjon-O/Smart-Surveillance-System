@@ -10,11 +10,12 @@ A connector lets a backend reach a site's cameras without opening any port at th
 
 ## Run
 
-docker-compose.connector.yml at the repository root runs the connector with host networking, which multicast discovery on the site's network needs:
+deploy/connector in the repository runs the connector with host networking, which multicast discovery on the site's network needs. Copy its example configuration, set SSS_CONNECTOR_BACKEND_URL to the backend's address, and start it:
 
 ```bash
-SSS_CONNECTOR_BACKEND_URL=https://cameras.example.com docker compose -f docker-compose.connector.yml up -d
-docker compose -f docker-compose.connector.yml logs -f connector
+cp deploy/connector/.env.example deploy/connector/.env
+docker compose -f deploy/connector/docker-compose.yml up -d --build
+docker compose -f deploy/connector/docker-compose.yml logs -f connector
 ```
 
 The container runs read-only, without capabilities and with a 512 MB memory limit. The SSS_CONNECTOR_ settings in the [configuration reference](../reference/configuration.mdx) change its name, ports, interfaces, subnets and discovery interval.

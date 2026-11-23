@@ -2,9 +2,10 @@
 
 ## Commands
 
-Run the stack from the repository root:
+Run the self-hosted stack from its folder, deploy/server; deploy/README.md lists every deployment target and its commands:
 
 ```
+cd deploy/server
 docker compose up -d --build
 docker compose logs -f backend
 docker compose down
@@ -27,7 +28,14 @@ Run the connector agent's and the camera adapters' checks the same way, with -w 
 scripts/export-openapi.sh
 ```
 
-Run the development kit, the compose project smart-surveillance-dev with a simulated site, from the repository root; tools/devkit/README.md describes it:
+Render a changed diagram source in docs/diagrams to its PNG card with headless Chrome, and check that no Markdown holds a mermaid block and every source has its card:
+
+```
+scripts/render-diagrams.sh docs/diagrams/<name>.mmd
+scripts/check-diagrams.sh
+```
+
+Run the development kit, the compose project smart-surveillance-dev in deploy/devkit with a simulated site, from the repository root; tools/devkit/README.md describes it:
 
 ```
 scripts/devkit.sh init
@@ -60,11 +68,19 @@ alembic revision --autogenerate -m "<message>"
 ### Repository
 
 - Keep the public repository free of the private data of the sites it watches: no real LAN addresses (examples and tests use 192.168.1.x), device ids, MACs, serials, Wi-Fi names, passwords, tokens, number plates, names, workspace paths, and no images, video or faces from the real cameras; tests use synthetic pictures or public-domain photos, because the repository is published and history cannot be taken back without a rewrite.
-- Keep .env and apps/tv/cameras.local.properties out of git and never print their values, because they hold the camera and service passwords.
+- Keep the .env of every deploy target and apps/tv/cameras.local.properties out of git and never print their values, because they hold the camera and service passwords.
 - Never bypass the local pre-push hook; when it refuses, remove the private value from the commits and push again, because the hook is the last check before data becomes public.
 - Use only models whose licence allows a public repository and keep every other model optional behind an explicit download flag, and never use Ultralytics YOLO weights or code, because their AGPL licence would bind the whole project.
+- Draw every diagram as docs/diagrams/<name>.mmd, commit the PNG card scripts/render-diagrams.sh renders beside it and embed that PNG in Markdown or MDX, never a mermaid block, and split or lay out again a diagram the renderer reports as shrunk until it reads at the card's width, because the documents show the cards and scripts/check-diagrams.sh fails CI on a mermaid block or a source without its card.
 - Keep model weights and engines out of git; scripts/download-models.sh, download-face-models.sh and download-secondary-models.sh fetch them with pinned checksums and print each licence.
 - Give every Python module, class and function outside tests and migrations a docstring with Args, Returns, Yields, Raises and Attributes sections where they apply, and add a comment only where the code cannot show its reason, because ruff enforces the docstring convention and the docstrings are the code's reference; write no emojis or non-ASCII characters in code, configs or docs.
+
+### Deployment
+
+- Keep one folder per deployment target in deploy, each with one docker-compose.yml that runs on its own and its .env.example, and give a target the server's services with extends from ../server/docker-compose.yml, never by copying them or stacking compose files, because a change to a service must reach every target.
+- Set env_file to the target's own .env in every service a target extends, because the server's relative .env resolves to deploy/server/.env.
+- Require a variable with :? in deploy/server/docker-compose.yml only when every target that extends the server needs it, because compose interpolates the whole server file for each of them.
+- Keep the compose project names smart-surveillance-system, smart-surveillance-connector and smart-surveillance-dev and the container, volume, network and image names, because the sites and the kit keep their data in the projects' named volumes.
 
 ### Backend
 
@@ -85,7 +101,7 @@ alembic revision --autogenerate -m "<message>"
 
 ### Streaming
 
-- Keep camera streams out of deploy/go2rtc/go2rtc.yaml and the file mounted read-only, because go2rtc writes stream URLs with camera passwords into its config when it can; only the TV exec streams, which carry no credentials, live there.
+- Keep camera streams out of every go2rtc.yaml under deploy and the files mounted read-only, because go2rtc writes stream URLs with camera passwords into its config when it can; only the TV exec streams, which carry no credentials, live there.
 - Keep the player asking for H.264 only, because go2rtc's direct H.265 path from the V380 delivers no frames.
 - Keep rtsp.listen on ":8554", which includes loopback, because every ffmpeg transcode and TV exec source reads and publishes through go2rtc's RTSP server on 127.0.0.1, and go2rtc skips RTSP authentication only for loopback clients.
 - Publish go2rtc's RTSP port only on SSS_LAN_BIND and keep SSS_TV_RTSP_PASSWORD set, because clients arriving through the published port are the only ones go2rtc asks for credentials and the VPN must not reach the cameras.
@@ -95,7 +111,7 @@ alembic revision --autogenerate -m "<message>"
 
 ### Composed TV streams
 
-- Define the TV streams as exec sources in deploy/go2rtc/go2rtc.yaml that run deploy/go2rtc/go2rtc-tv.sh, because go2rtc 1.9.14 refuses exec sources and sources with spaces through its API.
+- Define the TV streams as exec sources in deploy/server/go2rtc/go2rtc.yaml that run deploy/server/go2rtc/go2rtc-tv.sh, because go2rtc 1.9.14 refuses exec sources and sources with spaces through its API.
 - Keep -flags low_delay on every TV ffmpeg input, the filter threads at 2 and bilinear scaling, because low_delay turns off frame-threaded decoding, which delays each picture by a frame per thread, and the default filter threads with bicubic scaling cost about three CPU cores on the wall instead of under one.
 - Compose the TV streams as overlays on a lavfi canvas, never with xstack, because xstack sends nothing until every input has delivered a frame, so one silent camera would hold the whole wall.
 - Keep the TV composer's input user agent free of the RTSP username, because go2rtc masks the username wherever it appears in its API output and the backend finds the composer's inputs by that user agent.

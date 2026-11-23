@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { basename, dirname } from "node:path"
 
 import { escape, list, table } from "./markdown.ts"
-import { SOURCES, SOURCE_LISTS, fromRoot, locate, locateAll, writeGenerated } from "./sources.ts"
+import { SOURCE_LISTS, fromRoot, locateAll, writeGenerated } from "./sources.ts"
 
 /** A variable the code reads, with what its source says about it. */
 interface Setting {
@@ -10,6 +10,13 @@ interface Setting {
   fallback: string | null
   description: string
   reader: string
+}
+
+/** A line of an env example file. */
+interface ExampleLine {
+  name: string
+  example: string
+  group: number
 }
 
 /** A variable compose interpolates. */
@@ -124,9 +131,19 @@ function readEnvironmentReads(path: string): Setting[] {
 }
 
 /**
+ * Name the deployment target a file belongs to, such as server for deploy/server/docker-compose.yml.
+ *
+ * @param path Absolute path of a file in a target's folder.
+ * @returns The target's folder name.
+ */
+function target(path: string): string {
+  return basename(dirname(path))
+}
+
+/**
  * Read which compose services interpolate each variable, with compose's own defaults and required marks.
  *
- * @param paths The compose files.
+ * @param paths The compose files, one per deployment target.
  * @returns Uses by variable name.
  */
 function readCompose(paths: string[]): Map<string, ComposeUse> {
@@ -140,7 +157,7 @@ function readCompose(paths: string[]): Map<string, ComposeUse> {
       if (inServices && name) service = name[1]
       for (const found of line.matchAll(/\$\{([A-Z0-9_]+)(?:(:?-)([^}]*)|(:?\?)[^}]*)?\}/g)) {
         const use = uses.get(found[1]) ?? { services: new Set<string>(), fallback: null, required: false }
-        use.services.add(`${service || "top level"} in ${basename(path)}`)
+        use.services.add(`${service || "top level"} in ${target(path)}`)
         if (found[2] && found[3] !== undefined && use.fallback === null) use.fallback = found[3] || null
         if (found[4]) use.required = true
         uses.set(found[1], use)
@@ -156,8 +173,8 @@ function readCompose(paths: string[]): Map<string, ComposeUse> {
  * @param path The file.
  * @returns Variable names with their example values and group numbers.
  */
-function readExample(path: string): { name: string; example: string; group: number }[] {
-  const variables: { name: string; example: string; group: number }[] = []
+function readExample(path: string): ExampleLine[] {
+  const variables: ExampleLine[] = []
   let group = 0
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (!line.trim()) {
@@ -171,14 +188,15 @@ function readExample(path: string): { name: string; example: string; group: numb
 }
 
 /**
- * Write the generated tables of the configuration reference.
+ * Write the generated tables of the configuration reference: the first env example in full, and each other
+ * target's example in full when it leaves out more than half of the first one's variables, or else as its
+ * differences from the first one.
  *
  * @returns Number of variables, for the build log.
  */
 export function generateConfiguration(): string {
-  const examplePath = locate(SOURCES.envExample)
-  if (!examplePath) return "skipped"
-  const devPath = locate(SOURCES.envDevExample, false)
+  const examplePaths = locateAll(SOURCE_LISTS.envExamples)
+  if (examplePaths.length === 0) return "skipped"
   const settingsPaths = locateAll(SOURCE_LISTS.settings)
   const readerPaths = locateAll(SOURCE_LISTS.readers, false)
   const composePaths = locateAll(SOURCE_LISTS.compose)
@@ -189,6 +207,9 @@ export function generateConfiguration(): string {
   for (const setting of settings) byName.set(setting.name, [...(byName.get(setting.name) ?? []), setting])
 
   const describe = (name: string) => {
+    if (name.startsWith("COMPOSE_")) {
+      return { description: "Docker Compose setting, read from the target's .env", readBy: "docker compose", fallback: "empty" }
+    }
     const found = byName.get(name) ?? []
     const use = compose.get(name)
     const description = found.find((setting) => setting.description)?.description ?? ""
@@ -202,33 +223,56 @@ export function generateConfiguration(): string {
     }
   }
 
-  const exampleTable = (path: string) =>
+  const fullTable = (lines: ExampleLine[]) =>
     table(
       ["Name", "Example", "Default", "Meaning", "Read by"],
-      readExample(path).map((variable) => {
-        const info = describe(variable.name)
-        return [variable.name, variable.example || "empty", info.fallback, info.description, info.readBy]
+      lines.map((line) => {
+        const info = describe(line.name)
+        return [line.name, line.example || "empty", info.fallback, info.description, info.readBy]
       }),
     )
 
-  const listed = new Set([
-    ...readExample(examplePath).map((variable) => variable.name),
-    ...(devPath ? readExample(devPath).map((variable) => variable.name) : []),
-  ])
+  const [referencePath, ...otherPaths] = examplePaths
+  const reference = readExample(referencePath)
+  const referenceExamples = new Map(reference.map((line) => [line.name, line.example]))
+  const listed = new Set(reference.map((line) => line.name))
+
+  const sections = [
+    `Generated from the env example of every deployment target, ${escape(list(examplePaths.map(fromRoot)))}, the settings in ${escape(list(settingsPaths.map(fromRoot)))} and the compose files ${escape(list(composePaths.map(fromRoot)))}. Example is the line in the example file, Default what the code uses when the variable is unset.`,
+    "",
+    `## ${escape(target(referencePath))}`,
+    "",
+    `Every variable of ${escape(fromRoot(referencePath))}.`,
+    "",
+    fullTable(reference),
+  ]
+  for (const path of otherPaths) {
+    const lines = readExample(path)
+    const names = new Set(lines.map((line) => line.name))
+    for (const name of names) listed.add(name)
+    const leftOut = reference.filter((line) => !names.has(line.name)).map((line) => line.name)
+    sections.push("", `## ${escape(target(path))}`, "")
+    if (leftOut.length * 2 > reference.length) {
+      sections.push(`Every variable of ${escape(fromRoot(path))}.`, "", fullTable(lines))
+      continue
+    }
+    const changed = lines.filter((line) => referenceExamples.get(line.name) !== line.example)
+    sections.push(
+      `${escape(fromRoot(path))} keeps the lines of ${escape(fromRoot(referencePath))} except these${leftOut.length ? ` and leaves out ${escape(list(leftOut))}` : ""}.`,
+      "",
+      table(
+        ["Name", "Example", `Example in ${target(referencePath)}`, "Meaning"],
+        changed.map((line) => {
+          const before = referenceExamples.get(line.name)
+          return [line.name, line.example || "empty", before === undefined ? "not listed" : before || "empty", describe(line.name).description]
+        }),
+      ),
+    )
+  }
+
   const extra = [...byName.entries()]
     .filter(([name]) => !listed.has(name) && name.startsWith("SSS_"))
     .sort(([a], [b]) => a.localeCompare(b))
-
-  const sections = [
-    `Generated from ${escape(fromRoot(examplePath))}, the settings in ${escape(list(settingsPaths.map(fromRoot)))} and ${escape(list(composePaths.map(fromRoot)))}. Example is the line in the example file, Default what the code uses when the variable is unset.`,
-    "",
-    "## Variables in .env.example",
-    "",
-    exampleTable(examplePath),
-  ]
-  if (devPath) {
-    sections.push("", "## Variables in .env.dev.example", "", `The development kit reads ${escape(fromRoot(devPath))}.`, "", exampleTable(devPath))
-  }
   sections.push(
     "",
     "## Settings without an example line",
@@ -253,5 +297,5 @@ export function generateConfiguration(): string {
     )
   }
   writeGenerated("configuration.md", sections.join("\n"))
-  return `${listed.size} example variables, ${extra.length} further settings`
+  return `${listed.size} example variables in ${examplePaths.length} targets, ${extra.length} further settings`
 }

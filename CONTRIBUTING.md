@@ -18,7 +18,7 @@ Every commit message follows Conventional Commits 1.0.0: a lowercase type, an op
 | test | Tests only |
 | revert | Reverts an earlier commit |
 
-Scopes name the affected part: api, console, tv, analytics, connector, adapters, devkit. Mark a breaking change with an exclamation mark before the colon or a BREAKING CHANGE footer.
+Scopes name the affected part: api, console, tv, analytics, connector, adapters, devkit, deploy, docs. Mark a breaking change with an exclamation mark before the colon or a BREAKING CHANGE footer.
 
 Stage and commit explicit paths, never everything at once:
 
@@ -41,8 +41,16 @@ docker run --rm -u $(id -u):$(id -g) -e RUFF_CACHE_DIR=/tmp/ruff-cache -v $PWD/s
 
 docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -e COREPACK_HOME=/tmp/corepack -e PATH=/tmp/bin:/usr/local/bin:/usr/bin:/bin -v $PWD/apps/console:/app -w /app node:24 sh -c "mkdir -p /tmp/bin && corepack enable --install-directory /tmp/bin && pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm build"
 
+docker compose -f deploy/server/docker-compose.yml config -q
+
+scripts/check-diagrams.sh
+
 cd apps/tv && ./gradlew testDebugUnitTest
 ```
+
+Check every deploy target you changed with config -q, from its own .env; .github/workflows/compose.yml checks every target and profile from the example env files.
+
+Draw a diagram as a .mmd source in docs/diagrams, render it with scripts/render-diagrams.sh, which needs Chrome, and commit the PNG card beside the source; Markdown and MDX embed the card and never hold a mermaid block.
 
 The API suite includes the import-linter contracts that enforce the dependency rules in docs/architecture.md.
 

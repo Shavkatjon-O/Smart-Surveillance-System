@@ -21,16 +21,7 @@ Views run at 8 frames per second unless they set their own rate.
 
 ## Pipeline
 
-```mermaid
-flowchart LR
-  src["Decode each camera once, NVDEC"]
-  split["One source per lens"]
-  rate["Analysis rate per view"]
-  det["RF-DETR Medium and NvDCF tracker"]
-  rules["Rules, faces, features, tamper"]
-  clip["Snapshot and H.264 clip"]
-  src --> split --> rate --> det --> rules --> clip
-```
+![Analytics pipeline](/diagrams/analytics-pipeline.png)
 
 - The engine reads each camera's original stream from go2rtc's RTSP server and decodes it once on NVDEC, never the browser transcodes.
 - A cropping stage turns every lens into its own source, so the tracker never mixes objects across lenses.

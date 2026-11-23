@@ -6,7 +6,7 @@ The relay is the all-in-one deployment's way to run V380 cameras without the ear
 
 ## Run
 
-The compose services v380-relay-ptz-1 and v380-relay-ptz-2 run behind the v380-native profile, beside the bridge services, which stay the default until the cut-over:
+The compose services v380-relay-ptz-1 and v380-relay-ptz-2 of deploy/server run behind the v380-native profile, beside the bridge services, which stay the default until the cut-over; from deploy/server:
 
 ```
 docker compose --profile v380-native up -d --build v380-relay-ptz-1 v380-relay-ptz-2
@@ -48,7 +48,7 @@ uv run --package camera-adapters pytest -q
 
 The relay replaces the bridge services only after these steps pass on the real cameras, with the owner on site. Run them with both relays up beside the bridges, then stop the bridges.
 
-1. Start the relays: docker compose --profile v380-native up -d --build v380-relay-ptz-1 v380-relay-ptz-2, and check that GET /api/status answers running for both.
+1. Start the relays from deploy/server: docker compose --profile v380-native up -d --build v380-relay-ptz-1 v380-relay-ptz-2, and check that GET /api/status answers running for both.
 2. Sessions: on both cameras, device version 31 and device version 32, check with ffprobe that rtsp://RELAY:8554/main and /sub play H.265 at the sizes the specification lists, and that the logs show the short stream login reply and no reconnect loop.
 3. Two streams at once: play /main and /sub of the same camera together for ten minutes. If either drops or the camera restarts, set SSS_V380_STREAMS to the one stream the site needs.
 4. Registration: change each camera to the relay as host, RTSP port 8554 and the paths /main and /sub, in place of the bridge and /live, and check live view, analytics and recordings.

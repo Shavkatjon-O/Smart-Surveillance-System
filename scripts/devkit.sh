@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# Runs the development kit: the compose project smart-surveillance-dev from docker-compose.yml with the
-# docker-compose.dev.yml overlay and the gitignored .env.dev, with the simulated site of the devkit profile.
+# Runs the development kit: the compose project smart-surveillance-dev from deploy/devkit/docker-compose.yml and
+# its gitignored deploy/devkit/.env, with the simulated site of the devkit profile.
 # Commands:
-#   init: create .env.dev from .env.dev.example with generated secrets and copy the sample videos
+#   init: create deploy/devkit/.env from its .env.example with generated secrets and copy the sample videos
 #   up: build and start the kit in the background
 #   seed: create the demo organisation, its sites, members, cameras, analytics settings and history
 #   anything else: passed to docker compose, as in scripts/devkit.sh logs -f backend
@@ -11,29 +11,40 @@
 set -eu
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-cd "$ROOT"
+KIT=$ROOT/deploy/devkit
+ENV=$KIT/.env
 
+# Runs docker compose on the kit with the devkit profile unless COMPOSE_PROFILES names others.
+# Arguments:
+#   $@: the docker compose command and its arguments
 compose() {
-  COMPOSE_PROFILES=${COMPOSE_PROFILES:-devkit} docker compose -p smart-surveillance-dev --env-file .env.dev \
-    -f docker-compose.yml -f docker-compose.dev.yml "$@"
+  COMPOSE_PROFILES=${COMPOSE_PROFILES:-devkit} docker compose -f "$KIT/docker-compose.yml" "$@"
 }
 
+# Prints 24 random bytes as hex.
+# Outputs:
+#   Writes the secret to stdout.
 secret() {
   head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'
 }
 
+# Sets a variable of the kit's env file when it is still empty.
+# Arguments:
+#   $1: name of the variable
+#   $2: value to set
 fill() {
   key=$1
   value=$2
-  if grep -q "^$key=$" .env.dev; then
-    sed -i "s|^$key=$|$key=$value|" .env.dev
+  if grep -q "^$key=$" "$ENV"; then
+    sed -i "s|^$key=$|$key=$value|" "$ENV"
   fi
 }
 
+# Creates the kit's env file with generated secrets and copies the sample videos.
 init() {
-  if [ ! -f .env.dev ]; then
-    cp .env.dev.example .env.dev
-    chmod 600 .env.dev
+  if [ ! -f "$ENV" ]; then
+    cp "$KIT/.env.example" "$ENV"
+    chmod 600 "$ENV"
   fi
   fill SSS_SECRET_KEY "$(secret)"
   fill SSS_TV_RTSP_PASSWORD "$(secret)"
@@ -41,10 +52,10 @@ init() {
   fill SSS_DEV_CAMERA_PASSWORD "$(secret)"
   fill SSS_DEMO_PASSWORD "$(secret)"
   fill SSS_TELEGRAM_WEBHOOK_SECRET "$(secret)"
-  sh scripts/devkit-samples.sh
+  sh "$ROOT/scripts/devkit-samples.sh"
 }
 
-if [ ! -f .env.dev ] && [ "${1:-}" != "init" ]; then
+if [ ! -f "$ENV" ] && [ "${1:-}" != "init" ]; then
   echo "devkit: run scripts/devkit.sh init first" >&2
   exit 1
 fi

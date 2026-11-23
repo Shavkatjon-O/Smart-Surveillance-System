@@ -13,6 +13,7 @@
 **/.next
 **/out
 apps
+deploy
 services/analytics
 services/v380-bridge
 tools/cv-viewer

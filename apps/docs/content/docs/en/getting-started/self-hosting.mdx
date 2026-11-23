@@ -22,10 +22,10 @@ A self-hosted site runs every service on one computer: the API, the console, go2
 
 ### Configure
 
-Copy the example configuration:
+Copy the example configuration of the server target:
 
 ```bash
-cp .env.example .env
+cp deploy/server/.env.example deploy/server/.env
 ```
 
 Set SSS_SECRET_KEY to a long random value, SSS_TV_RTSP_PASSWORD and SSS_ANALYTICS_TOKEN to two other random values, SSS_ADMIN_PASSWORD, SSS_TIMEZONE to the zone schedules use, and SSS_LAN_BIND to the computer's address on the local network, reserved in the router so it does not change. SSS_SECRET_KEY also encrypts the stored camera passwords, so changing it later makes them unreadable. Every variable is listed in the [configuration reference](../reference/configuration.mdx).
@@ -41,7 +41,7 @@ scripts/download-face-models.sh
 scripts/download-secondary-models.sh
 ```
 
-The first fetches RF-DETR and exports it to ONNX, the second the face models, and the third the appearance, pose and plate models. Each script checks every file against a pinned checksum and prints its licence; read the [model licences](../licences.mdx) before use, because the face models are published for non-commercial research only. The scripts read SSS_ANALYTICS_MODELS_DIR and SSS_ANALYTICS_FACE_MODELS_DIR from the shell, not from .env, and default to the folders compose mounts.
+The first fetches RF-DETR and exports it to ONNX, the second the face models, and the third the appearance, pose and plate models. Each script checks every file against a pinned checksum and prints its licence; read the [model licences](../licences.mdx) before use, because the face models are published for non-commercial research only. The scripts read SSS_ANALYTICS_MODELS_DIR and SSS_ANALYTICS_FACE_MODELS_DIR from the shell, not from deploy/server/.env, and default to the folders compose mounts.
 
 </Step>
 <Step>
@@ -49,6 +49,7 @@ The first fetches RF-DETR and exports it to ONNX, the second the face models, an
 ### Start
 
 ```bash
+cd deploy/server
 docker compose up -d --build
 ```
 
@@ -72,4 +73,4 @@ Only two ports are published. The web app listens on 127.0.0.1 and on SSS_LAN_BI
 
 ## Updating
 
-Pull the repository and run docker compose up -d --build again. Database migrations run when the API starts, and the named volumes postgres, events and analytics-engines keep the data between versions.
+Pull the repository and run docker compose up -d --build again in deploy/server. Database migrations run when the API starts, and the named volumes postgres, events and analytics-engines keep the data between versions.

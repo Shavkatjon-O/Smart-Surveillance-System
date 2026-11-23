@@ -663,7 +663,7 @@ async def seed(demo: DemoSettings) -> SeedReport:
         SystemExit: SSS_DEMO_PASSWORD is empty.
     """
     if not demo.password:
-        raise SystemExit("Set SSS_DEMO_PASSWORD in .env.dev; scripts/devkit.sh init generates one")
+        raise SystemExit("Set SSS_DEMO_PASSWORD in deploy/devkit/.env; scripts/devkit.sh init generates one")
     report = SeedReport()
     async with async_session_maker() as session:
         users = await ensure_users(session, demo, report)

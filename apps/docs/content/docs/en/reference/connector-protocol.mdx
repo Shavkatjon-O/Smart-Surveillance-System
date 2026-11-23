@@ -6,20 +6,7 @@ icon: Cable
 
 A [connector](../guides/connector.mdx) pairs with RFC 8628, the device authorization grant: a device without a keyboard shows a code, and a person who is signed in elsewhere claims it.
 
-```mermaid
-sequenceDiagram
-  participant C as Connector
-  participant A as API
-  participant P as App
-  C->>A: request a device code
-  A-->>C: user code and device code
-  Note over C: shows the code and a QR code
-  P->>A: claim the code for a site
-  C->>A: poll with the device code
-  A-->>C: connector credential
-  C->>A: heartbeat and discovery reports
-  P->>A: list the discovered cameras
-```
+![Connector pairing](/diagrams/connector-pairing.png)
 
 - The connector sends its name, version and WireGuard public key with its request. The code lives SSS_CONNECTOR_CODE_MINUTES, 15 by default, is used once, and binds the connector to one site.
 - The connector polls every SSS_CONNECTOR_POLL_SECONDS, 5 by default, until an admin or owner claims the code. The answer then carries the connector's own credential, which it sends as a bearer token on every later call, the key central uses for the connector's agent API, the stream login of its go2rtc, and the tunnel settings for tunnel mode.
